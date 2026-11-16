@@ -11,9 +11,15 @@
 #include "ayu/ayu_ui_settings.h"
 #include "ayu/ayu_worker.h"
 #include "ayu/data/ayu_database.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/ui/ayu_logo.h"
+#include "core/application.h"
 #include "features/translator/ayu_translator.h"
 #include "lang/lang_instance.h"
+#include "main/main_account.h"
+#include "main/main_domain.h"
+#include "main/main_session.h"
+#include "mtproto/mtp_instance.h"
 #include "ui/chat/chat_style_radius.h"
 #include "utils/rc_manager.h"
 
@@ -46,6 +52,39 @@ void initUiSettings() {
 
 void initDatabase() {
 	AyuDatabase::initialize();
+	Ayu::Ffi::RustBridge::InitializeGlobal(u"./tdata/ayu_rust.db"_q, 24);
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		const auto &domain = Core::App().domain();
+		for (const auto &[index, account] : domain.accounts()) {
+			if (!account) {
+				continue;
+			}
+			const auto id = std::uint64_t(index);
+			const auto session = account->maybeSession();
+			const auto userId = session ? session->userId().bare : uint64(0);
+			const auto isTest = account->mtp().isTestMode();
+			bridge->registerAccount(id, userId, isTest);
+			const auto serialized = account->serializeMtpAuthorization();
+			if (!serialized.isEmpty()) {
+				bridge->importMtpAuthorization(id, serialized);
+			}
+			if (session) {
+				bridge->completeAuthorization(
+					id,
+					userId,
+					account->mtp().mainDcId(),
+					session->premium());
+			}
+		}
+		if (domain.started()) {
+			for (const auto &[index, account] : domain.accounts()) {
+				if (account.get() == &domain.active()) {
+					bridge->activateAccount(std::uint64_t(index));
+					break;
+				}
+			}
+		}
+	}
 }
 
 void initWorker() {

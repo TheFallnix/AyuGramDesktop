@@ -94,10 +94,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "spellcheck/spellcheck_highlight_syntax.h"
 
 // AyuGram includes
-#include "ayu/ayu_settings.h"
 #include "ayu/data/messages_storage.h"
 #include "ayu/features/filters/filters_controller.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/utils/telegram_helpers.h"
+#include "ayu/ayu_settings.h"
 
 
 namespace Data {
@@ -2492,6 +2493,9 @@ void Session::clearScheduledPhotoCache() {
 		if (!photoHasItemReferences(photo)) {
 			clearPhotoCache(photo);
 		}
+	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->evictInactiveCaches();
 	}
 }
 

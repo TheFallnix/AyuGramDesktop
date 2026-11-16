@@ -26,6 +26,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_controller.h"
 #include "data/data_peer_values.h" // Data::AmPremiumValue.
 
+// AyuGram includes
+#include "ayu/ffi/ayu_rust_bridge.h"
+
+
 namespace Main {
 
 Domain::Domain(const QString &dataName)
@@ -77,6 +81,11 @@ Storage::StartResult Domain::start(const QByteArray &passcode) {
 }
 
 void Domain::finish() {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		for (const auto &[index, _] : _accounts) {
+			bridge->removeAccount(std::uint64_t(index));
+		}
+	}
 	_accountToActivate = -1;
 	_active.reset(nullptr);
 	base::take(_accounts);
@@ -104,6 +113,27 @@ void Domain::accountAddedInStorage(AccountWithIndex accountWithIndex) {
 		}
 	}
 	_accounts.push_back(std::move(accountWithIndex));
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		const auto &added = _accounts.back();
+		const auto id = std::uint64_t(added.index);
+		const auto session = added.account->maybeSession();
+		const auto userId = session ? session->userId().bare : uint64(0);
+		bridge->registerAccount(
+			id,
+			userId,
+			added.account->mtp().isTestMode());
+		const auto serialized = added.account->serializeMtpAuthorization();
+		if (!serialized.isEmpty()) {
+			bridge->importMtpAuthorization(id, serialized);
+		}
+		if (session) {
+			bridge->completeAuthorization(
+				id,
+				userId,
+				added.account->mtp().mainDcId(),
+				session->premium());
+		}
+	}
 }
 
 void Domain::activateFromStorage(int index) {
@@ -304,6 +334,12 @@ not_null<Main::Account*> Domain::add(MTP::Environment environment) {
 	account->setMtpMainDcId(mainDcId);
 	_local->startAdded(account, std::move(config));
 	watchSession(account);
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->registerAccount(
+			std::uint64_t(index),
+			0,
+			environment == MTP::Environment::Test);
+	}
 	_accountsChanges.fire({});
 
 	auto &settings = Core::App().settings();
@@ -434,6 +470,9 @@ void Domain::removeRedundantAccounts() {
 			continue;
 		}
 		checkForLastProductionConfig(i->account.get());
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			bridge->removeAccount(std::uint64_t(i->index));
+		}
 		i = _accounts.erase(i);
 	}
 
@@ -490,6 +529,10 @@ void Domain::activate(not_null<Main::Account*> account) {
 	}
 	_accountToActivate = i->index;
 	_active = account.get();
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->activateAccount(std::uint64_t(i->index));
+		bridge->evictInactiveCaches();
+	}
 	_active.current()->sessionValue(
 	) | rpl::start_to_stream(_activeSessions, _activeLifetime);
 

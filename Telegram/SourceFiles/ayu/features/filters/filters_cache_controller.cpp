@@ -8,6 +8,8 @@
 
 #include "ayu/data/ayu_database.h"
 #include "ayu/features/filters/filters_controller.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
+#include "ayu/utils/telegram_helpers.h"
 #include "data/data_groups.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
@@ -88,14 +90,17 @@ std::shared_ptr<const Cache> buildCache() {
 }
 
 void rebuildCache() {
-	std::lock_guard rebuildLock(rebuildMutex);
-	auto next = buildCache();
 	{
+		std::lock_guard rebuildLock(rebuildMutex);
+		auto next = buildCache();
 		std::lock_guard cacheLock(cacheMutex);
 		std::lock_guard filteredLock(filteredMessagesMutex);
 		cache = std::move(next);
 		filteredMessages.clear();
 		dialogsWithHiddenBlockedMessages.clear();
+	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->rebuildFiltersCache();
 	}
 }
 
@@ -199,6 +204,11 @@ void putFiltered(
 }
 
 void invalidateSingle(not_null<HistoryItem*> item) {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->invalidateFilteredMessage(
+			std::int64_t(getDialogIdFromPeer(item->history()->peer)),
+			std::int32_t(item->id.bare));
+	}
 	const auto dialogIt = filteredMessages.find(item->history()->peer->id.value);
 
 	if (dialogIt == filteredMessages.end()) {

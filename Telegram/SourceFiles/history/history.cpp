@@ -84,11 +84,25 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_dialogs.h"
 
 // AyuGram includes
+#include "ayu/ffi/ayu_rust_bridge.h"
+#include "ayu/utils/telegram_helpers.h"
 #include "ayu/ayu_settings.h"
 #include "ayu/ayu_state.h"
+#include "main/main_account.h"
+#include "main/main_domain.h"
 
 
 namespace {
+
+[[nodiscard]] std::optional<std::uint64_t> AccountIdForSession(
+		const Main::Session &session) {
+	for (const auto &[index, account] : Core::App().domain().accounts()) {
+		if (account.get() == &session.account()) {
+			return std::uint64_t(index);
+		}
+	}
+	return std::nullopt;
+}
 
 constexpr auto kNewBlockEachMessage = 50;
 constexpr auto kSkipCloudDraftsFor = TimeId(2);
@@ -689,6 +703,16 @@ void History::destroyMessage(not_null<HistoryItem*> item) {
 	}
 
 	if (item->isHistoryEntry()) {
+		if (item->isRegular()) {
+			if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+				if (const auto accountId = AccountIdForSession(session())) {
+					bridge->deleteMessages(
+						*accountId,
+						getDialogIdFromPeer(peer),
+						{ std::int32_t(item->id.bare) });
+				}
+			}
+		}
 		// All this must be done for all items manually in History::clear()!
 		item->destroyHistoryEntry();
 		if (item->isRegular()) {
@@ -4404,6 +4428,13 @@ void History::clear(ClearType type, bool markEmpty) {
 	lastKeyboardInited = false;
 	if (type == ClearType::Unload) {
 		_loadedAtTop = _loadedAtBottom = markEmpty;
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			if (const auto accountId = AccountIdForSession(session())) {
+				bridge->unloadDialogViewport(
+					*accountId,
+					getDialogIdFromPeer(peer));
+			}
+		}
 	} else {
 		// Leave the 'sending' messages in local messages.
 		auto local = std::vector<not_null<HistoryItem*>>();
@@ -4440,6 +4471,17 @@ void History::clear(ClearType type, bool markEmpty) {
 			? (*_lastMessage)->id
 			: MsgId(std::numeric_limits<int64>::max());
 		clearUpTill(tillId);
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			if (const auto accountId = AccountIdForSession(session())) {
+				const auto cappedId = std::min<int64>(
+					tillId.bare,
+					std::numeric_limits<std::int32_t>::max());
+				bridge->clearDialogHistoryUpTo(
+					*accountId,
+					getDialogIdFromPeer(peer),
+					std::int32_t(cappedId));
+			}
+		}
 		if (blocks.empty() && _lastMessage && *_lastMessage) {
 			addItemToBlock(*_lastMessage);
 		}

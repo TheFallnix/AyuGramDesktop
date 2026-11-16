@@ -7,6 +7,7 @@
 #include "ayu/data/ayu_database.h"
 
 #include "ayu/data/entities.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/libs/sqlite/sqlite_orm.h"
 #include "base/unixtime.h"
 
@@ -212,6 +213,26 @@ void runMigrations(decltype(storage) &storage) {
 }
 
 namespace AyuDatabase {
+namespace {
+
+[[nodiscard]] QByteArray ToQByteArray(const std::vector<char> &bytes) {
+	return QByteArray(bytes.data(), int(bytes.size()));
+}
+
+[[nodiscard]] Ayu::Ffi::BridgeRegexFilter ToBridgeFilter(
+		const RegexFilter &filter) {
+	return Ayu::Ffi::BridgeRegexFilter{
+		.id = ToQByteArray(filter.id),
+		.pattern = QString::fromStdString(filter.text),
+		.enabled = filter.enabled,
+		.reversed = filter.reversed,
+		.caseInsensitive = filter.caseInsensitive,
+		.hasDialogId = filter.dialogId.has_value(),
+		.dialogId = filter.dialogId ? std::int64_t(*filter.dialogId) : 0,
+	};
+}
+
+} // namespace
 
 void moveCurrentDatabase() {
 	const auto time = base::unixtime::now();
@@ -507,6 +528,9 @@ void addRegexFilter(const RegexFilter &filter) {
 		}
 		LOG(("Failed to save regex filter for some reason: %1").arg(ex.what()));
 	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->upsertRegexFilter(ToBridgeFilter(filter));
+	}
 }
 
 void addRegexExclusion(const RegexFilterGlobalExclusion &exclusion) {
@@ -521,6 +545,11 @@ void addRegexExclusion(const RegexFilterGlobalExclusion &exclusion) {
 		} catch (...) {
 		}
 		LOG(("Failed to save regex filter exclusion for some reason: %1").arg(ex.what()));
+	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->addRegexExclusion(
+			std::int64_t(exclusion.dialogId),
+			ToQByteArray(exclusion.filterId));
 	}
 }
 
@@ -540,6 +569,9 @@ void updateRegexFilter(const RegexFilter &filter) {
 	} catch (std::exception &ex) {
 		LOG(("Failed to update regex filter for some reason: %1").arg(ex.what()));
 	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->upsertRegexFilter(ToBridgeFilter(filter));
+	}
 }
 
 void deleteFilter(const std::vector<char> &id) {
@@ -551,6 +583,9 @@ void deleteFilter(const std::vector<char> &id) {
 	} catch (std::exception &ex) {
 		LOG(("Failed to delete regex filter for some reason: %1").arg(ex.what()));
 	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->deleteRegexFilter(ToQByteArray(id));
+	}
 }
 
 void deleteExclusionsByFilterId(const std::vector<char> &id) {
@@ -561,6 +596,9 @@ void deleteExclusionsByFilterId(const std::vector<char> &id) {
 		);
 	} catch (std::exception &ex) {
 		LOG(("Failed to delete regex filter exclusion by filter id for some reason: %1").arg(ex.what()));
+	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->deleteExclusionsByFilterId(ToQByteArray(id));
 	}
 }
 
@@ -575,6 +613,11 @@ void deleteExclusion(ID dialogId, std::vector<char> filterId) {
 	} catch (std::exception &ex) {
 		LOG(("Failed to delete regex filter exclusion for some reason: %1").arg(ex.what()));
 	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->removeRegexExclusion(
+			std::int64_t(dialogId),
+			ToQByteArray(filterId));
+	}
 }
 
 void deleteAllFilters() {
@@ -584,6 +627,9 @@ void deleteAllFilters() {
 	} catch (std::exception &ex) {
 		LOG(("Failed to delete all regex filter for some reason: %1").arg(ex.what()));
 	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->clearRegexFilters();
+	}
 }
 
 void deleteAllExclusions() {
@@ -592,6 +638,9 @@ void deleteAllExclusions() {
 		storage.remove_all<RegexFilterGlobalExclusion>();
 	} catch (std::exception &ex) {
 		LOG(("Failed to delete all regex filter exclusions for some reason: %1").arg(ex.what()));
+	}
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->clearRegexExclusions();
 	}
 }
 

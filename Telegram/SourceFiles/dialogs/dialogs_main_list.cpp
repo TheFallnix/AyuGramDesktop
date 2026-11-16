@@ -14,7 +14,28 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_unread_things.h"
 #include "history/history.h"
 
+// AyuGram includes
+#include "ayu/ffi/ayu_rust_bridge.h"
+#include "ayu/utils/telegram_helpers.h"
+#include "core/application.h"
+#include "main/main_account.h"
+#include "main/main_domain.h"
+
+
 namespace Dialogs {
+namespace {
+
+[[nodiscard]] std::optional<std::uint64_t> AccountIdForSession(
+		const Main::Session &session) {
+	for (const auto &[index, account] : Core::App().domain().accounts()) {
+		if (account.get() == &session.account()) {
+			return std::uint64_t(index);
+		}
+	}
+	return std::nullopt;
+}
+
+} // namespace
 
 MainList::MainList(
 	not_null<Main::Session*> session,
@@ -88,6 +109,9 @@ void MainList::clear() {
 	_unreadState.known = true;
 	_cloudUnreadState.known = true;
 	_cloudListSize = 0;
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->evictInactiveCaches();
+	}
 }
 
 RowsByLetter MainList::addEntry(Key key) {
@@ -96,6 +120,36 @@ RowsByLetter MainList::addEntry(Key key) {
 	const auto unread = key.entry()->chatListUnreadState();
 	unreadEntryChanged(unread, true);
 	recomputeFullListSize();
+
+	if (const auto history = key.history()) {
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			if (const auto accountId = AccountIdForSession(history->session())) {
+				const auto lastMsg = history->lastMessage();
+				bridge->upsertDialog(
+					*accountId,
+					Ayu::Ffi::BridgeDialogRow{
+						.dialogId = getDialogIdFromPeer(history->peer),
+						.peerId = history->peer->id.value,
+						.folderId = _filterId,
+						.title = history->chatListName(),
+						.topMessageId = lastMsg
+							? std::int32_t(lastMsg->id.bare)
+							: 0,
+						.readInboxMaxId = std::int32_t(
+							history->inboxReadTillId().bare),
+						.readOutboxMaxId = std::int32_t(
+							history->outboxReadTillId().bare),
+						.lastMessageDate = std::int32_t(
+							history->chatListTimeId()),
+						.unreadCount = std::uint32_t(
+							std::max(0, history->unreadCount())),
+						.flags = history->isPinnedDialog(_filterId)
+							? std::uint16_t(1)
+							: std::uint16_t(0),
+					});
+			}
+		}
+	}
 
 	return result;
 }
@@ -106,6 +160,16 @@ void MainList::removeEntry(Key key) {
 	const auto unread = key.entry()->chatListUnreadState();
 	unreadEntryChanged(unread, false);
 	recomputeFullListSize();
+
+	if (const auto history = key.history()) {
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			if (const auto accountId = AccountIdForSession(history->session())) {
+				bridge->removeDialog(
+					*accountId,
+					getDialogIdFromPeer(history->peer));
+			}
+		}
+	}
 }
 
 void MainList::recomputeFullListSize() {

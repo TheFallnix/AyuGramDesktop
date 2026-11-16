@@ -76,10 +76,33 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/ayu_worker.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
+#include "main/main_domain.h"
 
 
 namespace Api {
 namespace {
+
+[[nodiscard]] std::optional<std::uint64_t> AccountIdForSession(
+		const Main::Session &session) {
+	for (const auto &[index, account] : Core::App().domain().accounts()) {
+		if (account.get() == &session.account()) {
+			return std::uint64_t(index);
+		}
+	}
+	return std::nullopt;
+}
+
+void MirrorPtsUpdate(
+		const Main::Session &session,
+		int32 pts,
+		int32 ptsCount) {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto accountId = AccountIdForSession(session)) {
+			bridge->applyPtsUpdate(*accountId, 0, pts, ptsCount);
+		}
+	}
+}
 
 constexpr auto kChannelGetDifferenceLimit = 100;
 
@@ -360,6 +383,11 @@ void Updates::feedMessageIds(const MTPVector<MTPUpdate> &updates) {
 }
 
 void Updates::setState(int32 pts, int32 date, int32 qts, int32 seq) {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto accountId = AccountIdForSession(session())) {
+			bridge->initSyncState(*accountId, pts, qts, date, seq);
+		}
+	}
 	if (pts) {
 		_ptsWaiter.init(pts);
 	}
@@ -598,6 +626,7 @@ bool Updates::updateAndApply(
 		int32 pts,
 		int32 ptsCount,
 		const MTPUpdates &updates) {
+	MirrorPtsUpdate(session(), pts, ptsCount);
 	return _ptsWaiter.updateAndApply(nullptr, pts, ptsCount, updates);
 }
 
@@ -605,10 +634,12 @@ bool Updates::updateAndApply(
 		int32 pts,
 		int32 ptsCount,
 		const MTPUpdate &update) {
+	MirrorPtsUpdate(session(), pts, ptsCount);
 	return _ptsWaiter.updateAndApply(nullptr, pts, ptsCount, update);
 }
 
 bool Updates::updateAndApply(int32 pts, int32 ptsCount) {
+	MirrorPtsUpdate(session(), pts, ptsCount);
 	return _ptsWaiter.updateAndApply(nullptr, pts, ptsCount);
 }
 

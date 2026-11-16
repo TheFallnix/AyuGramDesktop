@@ -8,6 +8,7 @@
 
 #include "apiwrap.h"
 #include "ayu_settings.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "base/timer.h"
 #include "base/unixtime.h"
 #include "core/application.h"
@@ -32,6 +33,16 @@ base::Timer &workerTimer() {
 
 void markAsOnline(not_null<Main::Session*> session) {
 	state[session->userId().bare] = true;
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		auto accountId = std::uint64_t(session->userId().bare);
+		for (const auto &[index, account] : Core::App().domain().accounts()) {
+			if (account.get() == &session->account()) {
+				accountId = std::uint64_t(index);
+				break;
+			}
+		}
+		bridge->markAccountOnline(accountId);
+	}
 	workerTimer().cancel();
 	workerTimer().callEach(3000);
 }

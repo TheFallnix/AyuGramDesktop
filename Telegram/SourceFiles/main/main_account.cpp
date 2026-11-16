@@ -28,10 +28,25 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_domain.h"
 #include "main/main_session_settings.h"
 
+// AyuGram includes
+#include "ayu/ffi/ayu_rust_bridge.h"
+
+
 namespace Main {
 namespace {
 
 constexpr auto kWideIdsTag = ~uint64(0);
+
+[[nodiscard]] std::optional<std::uint64_t> AccountIdFor(
+		const Domain &domain,
+		const Account *account) {
+	for (const auto &[index, entry] : domain.accounts()) {
+		if (entry.get() == account) {
+			return std::uint64_t(index);
+		}
+	}
+	return std::nullopt;
+}
 
 [[nodiscard]] QString ComposeDataString(const QString &dataName, int index) {
 	auto result = dataName;
@@ -197,6 +212,16 @@ void Account::createSession(
 		local().readSelf(_session.get(), serialized, streamVersion);
 	}
 	_sessionValue = _session.get();
+
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto id = AccountIdFor(*_domain, this)) {
+			bridge->completeAuthorization(
+				*id,
+				_session->userId().bare,
+				_mtp->mainDcId(),
+				_session->premium());
+		}
+	}
 
 	Ensures(_session != nullptr);
 }
@@ -421,6 +446,11 @@ void Account::setMtpAuthorization(const QByteArray &serialized) {
 		"read keys, current: %1, to destroy: %2"
 		).arg(_mtpFields.keys.size()
 		).arg(_mtpKeysToDestroy.size()));
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto id = AccountIdFor(*_domain, this)) {
+			bridge->importMtpAuthorization(*id, serialized);
+		}
+	}
 }
 
 void Account::startMtp(std::unique_ptr<MTP::Config> config) {
@@ -532,6 +562,11 @@ void Account::logOut() {
 		return;
 	}
 	_loggingOut = true;
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto id = AccountIdFor(*_domain, this)) {
+			bridge->beginLogout(*id);
+		}
+	}
 	if (_mtp) {
 		_mtp->logout([=] { loggedOut(); });
 	} else {
@@ -547,6 +582,11 @@ bool Account::loggingOut() const {
 void Account::forcedLogOut() {
 	if (sessionExists()) {
 		loggedOut();
+		if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+			if (const auto id = AccountIdFor(*_domain, this)) {
+				bridge->forceLogout(*id);
+			}
+		}
 		resetAuthorizationKeys();
 	}
 }
@@ -557,6 +597,11 @@ void Account::loggedOut() {
 	destroySession(DestroyReason::LoggedOut);
 	local().reset();
 	cSetOtherOnline(0);
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto id = AccountIdFor(*_domain, this)) {
+			bridge->finishLogout(*id);
+		}
+	}
 }
 
 void Account::destroyMtpKeys(MTP::AuthKeysList &&keys) {
@@ -623,6 +668,11 @@ void Account::setHandleLoginCode(Fn<void(QString)> callback) {
 }
 
 void Account::handleLoginCode(const QString &code) const {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		if (const auto id = AccountIdFor(*_domain, this)) {
+			bridge->pushLoginCode(*id, code);
+		}
+	}
 	if (_handleLoginCode) {
 		_handleLoginCode(code);
 	}

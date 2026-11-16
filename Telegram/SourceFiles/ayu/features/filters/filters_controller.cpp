@@ -10,6 +10,7 @@
 #include "ayu/ayu_settings.h"
 #include "ayu/features/filters/filters_cache_controller.h"
 #include "ayu/features/filters/filters_utils.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/utils/telegram_helpers.h"
 #include "data/data_peer.h"
 #include "data/data_peer_id.h"
@@ -192,14 +193,22 @@ bool filtered(const not_null<HistoryItem*> item) {
 }
 
 std::optional<bool> filteredMessagesShown(not_null<PeerData*> peer) {
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	const auto hasRustFiltered = bridge
+		&& bridge->hasFilteredMessages(std::int64_t(getDialogIdFromPeer(peer)));
 	if (!showingFilteredMessages.contains(peer->id.value)
-		&& !FiltersCacheController::hasFilteredMessages(peer)) {
+		&& !FiltersCacheController::hasFilteredMessages(peer)
+		&& !hasRustFiltered) {
 		return std::nullopt;
 	}
 	return showingFilteredMessages.contains(peer->id.value);
 }
 
 void toggleFilteredMessagesShown(not_null<PeerData*> peer) {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->toggleFilteredMessagesShown(
+			std::int64_t(getDialogIdFromPeer(peer)));
+	}
 	if (showingFilteredMessages.contains(peer->id.value)) {
 		showingFilteredMessages.erase(peer->id.value);
 	} else {
