@@ -1,0 +1,31 @@
+[package]
+name = "ayu-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = ["jemalloc"]
+jemalloc = ["dep:tikv-jemallocator"]
+
+[dependencies]
+anyhow.workspace = true
+ayu-core = { path = "../ayu-core" }
+ayu-mtproto = { path = "../ayu-mtproto" }
+ayu-storage = { path = "../ayu-storage" }
+cxx.workspace = true
+smallvec.workspace = true
+tokio.workspace = true
+
+[dependencies.tikv-jemallocator]
+workspace = true
+optional = true
+
+[build-dependencies]
+cxx-build.workspace = true

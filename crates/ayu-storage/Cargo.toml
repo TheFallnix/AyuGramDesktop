@@ -1,0 +1,15 @@
+[package]
+name = "ayu-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ayu-core = { path = "../ayu-core" }
+bytemuck.workspace = true
+rusqlite.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true

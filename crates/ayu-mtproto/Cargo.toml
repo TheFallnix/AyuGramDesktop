@@ -1,0 +1,14 @@
+[package]
+name = "ayu-mtproto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ayu-core = { path = "../ayu-core" }
+bytes.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

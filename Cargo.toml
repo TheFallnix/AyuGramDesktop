@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ayu-core",
+    "crates/ayu-mtproto",
+    "crates/ayu-storage",
+    "crates/ayu-ffi",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.dependencies]
+anyhow = "1"
+bitflags = "2"
+bytemuck = { version = "1.18", features = ["derive"] }
+bytes = "1"
+criterion = "0.5"
+cxx = "1.0"
+cxx-build = "1.0"
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+smallvec = { version = "1.13", features = ["union", "const_generics"] }
+thiserror = "2"
+tikv-jemallocator = "0.6"
+tokio = { version = "1.40", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = "s"
+panic = "abort"

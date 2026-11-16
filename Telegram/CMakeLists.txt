@@ -42,6 +42,7 @@ include(cmake/td_scheme.cmake)
 include(cmake/td_tde2e.cmake)
 include(cmake/td_ui.cmake)
 include(cmake/td_webauthn.cmake)
+include(cmake/td_ayu_rust.cmake)
 include(cmake/telegram_apple_swift_runtime.cmake)
 include(cmake/generate_appstream_changelog.cmake)
 
@@ -65,11 +66,13 @@ if (DESKTOP_APP_TEST_APPS OR DESKTOP_APP_SPECIAL_TARGET)
 endif()
 
 set_target_properties(Telegram PROPERTIES AUTOMOC ON)
+add_dependencies(Telegram td_ayu_rust_codegen)
 
 target_link_libraries(Telegram
 PRIVATE
     tdesktop::lib_fido2
     tdesktop::lib_tgcalls
+    tdesktop::td_ayu_rust
     tdesktop::td_export
     tdesktop::td_iv
     tdesktop::td_lang
@@ -252,6 +255,8 @@ set(ayugram_files
         ayu/data/entities.h
         ayu/data/ayu_database.cpp
         ayu/data/ayu_database.h
+        ayu/ffi/ayu_rust_bridge.cpp
+        ayu/ffi/ayu_rust_bridge.h
 
         info/profile/info_profile_music_button.cpp
         info/profile/info_profile_music_button.h
