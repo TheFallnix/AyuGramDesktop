@@ -18,6 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/utils/telegram_helpers.h"
 #include "core/application.h"
+#include "history/history_item.h"
 #include "main/main_account.h"
 #include "main/main_domain.h"
 

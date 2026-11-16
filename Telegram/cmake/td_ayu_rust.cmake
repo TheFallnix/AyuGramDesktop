@@ -57,12 +57,13 @@ else()
             "${ayu_rust_lib_release}"
         COMMAND
             "${CMAKE_COMMAND}" -E env
+            --unset=MAKEFLAGS
             "AYU_CXX_HEADER_OUT_DIR=${ayu_rust_include_dir}"
             "${CARGO_EXECUTABLE}" build
             --manifest-path "${CMAKE_SOURCE_DIR}/Cargo.toml"
             --package ayu-ffi
             --target-dir "${ayu_rust_target_dir}"
-            "$<$<NOT:$<CONFIG:Debug>>:--release>"
+            "$<IF:$<CONFIG:Debug>,--profile=dev,--release>"
         DEPENDS
             ${ayu_rust_sources}
         WORKING_DIRECTORY
@@ -96,6 +97,7 @@ endif()
 target_include_directories(td_ayu_rust
 INTERFACE
     "${ayu_rust_include_dir}"
+    "${ayu_rust_target_dir}/cxxbridge"
 )
 
 if (WIN32)
