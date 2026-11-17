@@ -100,6 +100,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ayu/utils/telegram_helpers.h"
 #include "ayu/ayu_settings.h"
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif // __GLIBC__
+
 
 namespace Data {
 namespace {
@@ -2497,6 +2501,9 @@ void Session::clearScheduledPhotoCache() {
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->evictInactiveCaches();
 	}
+#ifdef __GLIBC__
+	malloc_trim(0);
+#endif // __GLIBC__
 }
 
 auto Session::itemsAboutToBeDestroyed() const

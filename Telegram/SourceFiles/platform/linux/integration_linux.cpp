@@ -167,7 +167,7 @@ LinuxIntegration::LinuxIntegration()
 		QCoreApplication::eventDispatcher(),
 		&QAbstractEventDispatcher::aboutToBlock,
 		[=] {
-			if (crl::now() - _memoryTrimmed >= 10000) {
+			if (crl::now() - _memoryTrimmed >= 2000) {
 				malloc_trim(0);
 				_memoryTrimmed = crl::now();
 			}

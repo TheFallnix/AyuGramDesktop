@@ -28,6 +28,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ffi/ayu_rust_bridge.h"
+#include "data/data_histories.h"
+
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif // __GLIBC__
 
 
 namespace Main {
@@ -522,10 +527,14 @@ void Domain::activate(not_null<Main::Account*> account) {
 	const auto changed = (_accountToActivate != i->index);
 	auto wasAuthed = false;
 
+	const auto previous = _active.current();
 	_activeLifetime.destroy();
-	if (_active.current()) {
+	if (previous) {
 		_lastActiveIndex = _accountToActivate;
-		wasAuthed = _active.current()->sessionExists();
+		wasAuthed = previous->sessionExists();
+		if (wasAuthed && !Core::App().separateWindowFor(not_null(previous))) {
+			previous->session().data().histories().unloadAll();
+		}
 	}
 	_accountToActivate = i->index;
 	_active = account.get();
@@ -533,6 +542,9 @@ void Domain::activate(not_null<Main::Account*> account) {
 		bridge->activateAccount(std::uint64_t(i->index));
 		bridge->evictInactiveCaches();
 	}
+#ifdef __GLIBC__
+	malloc_trim(0);
+#endif // __GLIBC__
 	_active.current()->sessionValue(
 	) | rpl::start_to_stream(_activeSessions, _activeLifetime);
 

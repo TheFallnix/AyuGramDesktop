@@ -57,7 +57,8 @@ impl SqliteStorage {
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA temp_store = MEMORY;
-            PRAGMA cache_size = -4096;
+            PRAGMA cache_size = -1024;
+            PRAGMA mmap_size = 0;
             PRAGMA foreign_keys = ON;
             ",
         )?;

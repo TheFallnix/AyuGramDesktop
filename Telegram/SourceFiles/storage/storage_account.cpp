@@ -1844,7 +1844,11 @@ QString Account::cachePath() const {
 Cache::Database::Settings Account::cacheSettings() const {
 	auto result = Cache::Database::Settings();
 	result.clearOnWrongKey = true;
-	result.totalSizeLimit = _cacheTotalSizeLimit;
+	result.maxBundledRecords = 128;
+	result.readBlockSize = 256 * 1024;
+	result.writeBundleDelay = 3 * crl::time(1000);
+	result.compactAfterExcess = 1024 * 1024;
+	result.totalSizeLimit = std::min(_cacheTotalSizeLimit, int64(64 * 1024 * 1024));
 	result.totalTimeLimit = _cacheTotalTimeLimit;
 	result.maxDataSize = kMaxFileInMemory;
 	return result;
@@ -1880,7 +1884,11 @@ QString Account::cacheBigFilePath() const {
 Cache::Database::Settings Account::cacheBigFileSettings() const {
 	auto result = Cache::Database::Settings();
 	result.clearOnWrongKey = true;
-	result.totalSizeLimit = _cacheBigFileTotalSizeLimit;
+	result.maxBundledRecords = 128;
+	result.readBlockSize = 256 * 1024;
+	result.writeBundleDelay = 3 * crl::time(1000);
+	result.compactAfterExcess = 1024 * 1024;
+	result.totalSizeLimit = std::min(_cacheBigFileTotalSizeLimit, int64(128 * 1024 * 1024));
 	result.totalTimeLimit = _cacheBigFileTotalTimeLimit;
 	result.maxDataSize = kMaxFileInMemory;
 	return result;

@@ -52,7 +52,7 @@ void initUiSettings() {
 
 void initDatabase() {
 	AyuDatabase::initialize();
-	Ayu::Ffi::RustBridge::InitializeGlobal(u"./tdata/ayu_rust.db"_q, 24);
+	Ayu::Ffi::RustBridge::InitializeGlobal(u"./tdata/ayu_rust.db"_q, 4);
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		const auto &domain = Core::App().domain();
 		for (const auto &[index, account] : domain.accounts()) {

@@ -13,7 +13,7 @@ use ayu_core::{
 };
 use ayu_mtproto::{
     AsyncTransport, AuthKey, FileTransferManager, MtprotoError, MtprotoMultiplexer, PtsCheckResult,
-    SessionId, TransferProgress, TransportFuture, UpdatesSynchronizer, DEFAULT_MAX_INFLIGHT_BYTES,
+    SessionId, TransferProgress, TransportFuture, UpdatesSynchronizer,
 };
 use ayu_storage::{ByteBoundedMediaCache, SqliteStorage};
 use smallvec::SmallVec;
@@ -577,13 +577,13 @@ pub struct AyuRustEngine {
     dialog_windows: Mutex<ActiveDialogWindowMap>,
 }
 
-const DEFAULT_MAX_RESIDENT_WINDOWS: usize = 2;
-const DEFAULT_MAX_RESIDENT_DIALOG_WINDOWS: usize = 2;
+const DEFAULT_MAX_RESIDENT_WINDOWS: usize = 1;
+const DEFAULT_MAX_RESIDENT_DIALOG_WINDOWS: usize = 1;
 
 impl AyuRustEngine {
     pub fn new(db_path: &str, media_cache_limit_mb: usize) -> Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(1)
             .enable_all()
             .thread_name("ayu-tokio")
             .build()
@@ -615,7 +615,7 @@ impl AyuRustEngine {
             media_cache: ByteBoundedMediaCache::new(limit_bytes),
             multiplexer: MtprotoMultiplexer::new(transport, 16),
             sync: UpdatesSynchronizer::new(),
-            transfers: FileTransferManager::new(DEFAULT_MAX_INFLIGHT_BYTES),
+            transfers: FileTransferManager::new(2 * 1024 * 1024),
             filters: Mutex::new(filters_engine),
             next_temp_msg_id: AtomicI32::new(-1),
             windows: Mutex::new(HashMap::new()),
