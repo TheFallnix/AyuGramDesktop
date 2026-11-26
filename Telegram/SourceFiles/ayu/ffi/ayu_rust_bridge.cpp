@@ -1848,4 +1848,22 @@ bool RustBridge::hasEditedRecords(
 	}
 }
 
+bool RustBridge::validateRegexPattern(
+		const QString &pattern,
+		QString &errorOut) const {
+	if (!_impl) {
+		return true;
+	}
+	try {
+		const auto utf8 = pattern.toUtf8();
+		_impl->engine->validate_regex_pattern(
+			rust::Str(utf8.constData(), utf8.size()));
+		errorOut.clear();
+		return true;
+	} catch (const rust::Error &err) {
+		errorOut = QString::fromUtf8(err.what());
+		return false;
+	}
+}
+
 } // namespace Ayu::Ffi

@@ -79,6 +79,14 @@ impl AyuFilterEngine {
         self.hide_from_blocked
     }
 
+    pub fn validate_pattern(pattern: &str) -> Result<(), String> {
+        RegexBuilder::new(pattern)
+            .multi_line(true)
+            .build()
+            .map(|_| ())
+            .map_err(|err| err.to_string())
+    }
+
     pub fn set_shadow_banned(&mut self, peer_dialog_id: i64, banned: bool) {
         if banned {
             self.shadow_banned_peers.insert(peer_dialog_id);

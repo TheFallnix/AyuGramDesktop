@@ -404,6 +404,9 @@ public:
 	bool consumeDisableGhostOnStoryClose(std::uint64_t accountId);
 
 	[[nodiscard]] std::vector<BridgeRegexExclusion> listRegexExclusions();
+	[[nodiscard]] bool validateRegexPattern(
+		const QString &pattern,
+		QString &errorOut) const;
 	std::int64_t insertDeletedRecord(
 		std::int64_t userId,
 		std::int64_t dialogId,

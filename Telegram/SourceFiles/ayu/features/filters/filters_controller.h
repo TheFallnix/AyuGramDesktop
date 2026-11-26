@@ -6,12 +6,7 @@
 // Copyright @Radolyn, 2026
 #pragma once
 
-#include "unicode/regex.h"
-
-#include <memory>
 #include <optional>
-#include <string>
-#include <vector>
 
 namespace FiltersController {
 
@@ -24,28 +19,4 @@ void toggleFilteredMessagesShown(not_null<PeerData*> peer);
 
 void invalidate(not_null<HistoryItem*> item);
 
-struct ReversiblePattern
-{
-	std::shared_ptr<icu::RegexPattern> pattern;
-	bool reversed;
-};
-
-struct HashablePattern
-{
-	std::vector<char> id;
-	ReversiblePattern pattern;
-
-	bool operator==(const HashablePattern &other) const {
-		return id == other.id;
-	}
-};
-
-struct PatternHasher
-{
-	std::size_t operator()(const HashablePattern &p) const {
-		std::string_view view(p.id.data(), p.id.size());
-		return std::hash<std::string_view>{}(view);
-	}
-};
-
-}
+} // namespace FiltersController

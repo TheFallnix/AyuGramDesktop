@@ -529,6 +529,7 @@ mod ffi {
         fn consume_disable_ghost_on_story_close(self: &AyuRustEngine, account_id: u64) -> bool;
 
         fn list_regex_exclusions(self: &AyuRustEngine) -> Result<Vec<FfiRegexExclusion>>;
+        fn validate_regex_pattern(self: &AyuRustEngine, pattern: &str) -> Result<()>;
         fn insert_deleted_record(
             self: &AyuRustEngine,
             user_id: i64,
@@ -2074,6 +2075,10 @@ impl AyuRustEngine {
                 filter_id: item.filter_id.into_vec(),
             })
             .collect())
+    }
+
+    pub fn validate_regex_pattern(&self, pattern: &str) -> Result<()> {
+        AyuFilterEngine::validate_pattern(pattern).map_err(|err| anyhow!(err))
     }
 
     pub fn insert_deleted_record(

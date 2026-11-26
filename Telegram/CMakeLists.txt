@@ -21,10 +21,6 @@ add_subdirectory(lib_webrtc)
 add_subdirectory(lib_webview)
 add_subdirectory(codegen)
 
-# AyuGram filters
-add_subdirectory(lib_icu)
-# AyuGram filters
-
 get_filename_component(src_loc SourceFiles REALPATH)
 get_filename_component(res_loc Resources REALPATH)
 
@@ -105,9 +101,6 @@ PRIVATE
     desktop-app::external_openssl
     desktop-app::external_openal
     desktop-app::external_xxhash
-
-    # AyuGram filters
-    ayugram::lib_icu
 )
 
 set(ayugram_files

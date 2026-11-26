@@ -10,6 +10,7 @@
 #include "ayu/ayu_settings.h"
 #include "ayu/data/ayu_database.h"
 #include "ayu/features/filters/filters_cache_controller.h"
+#include "ayu/ffi/ayu_rust_bridge.h"
 #include "ayu/ui/toasts.h"
 #include "base/event_filter.h"
 #include "base/platform/base_platform_info.h"
@@ -54,47 +55,10 @@ std::vector<char> generate_uuid_bytes() {
 	return std::vector<char>(bytes.begin(), bytes.end());
 }
 
-bool validateRegex(const icu::UnicodeString& pattern, std::string& errorMsg) {
-	UErrorCode status = U_ZERO_ERROR;
-	UParseError parseError;
-
-	icu::RegexPattern* regexPattern = icu::RegexPattern::compile(
-		pattern,
-		0, // flags
-		parseError,
-		status
-	);
-
-	if (U_FAILURE(status)) {
-		auto errorCodeNormalized = std::string(u_errorName(status));
-		errorCodeNormalized = errorCodeNormalized.substr(8); // skip U_REGEX_
-		std::ranges::transform(
-			errorCodeNormalized,
-			errorCodeNormalized.begin(),
-			[](unsigned char c)
-			{
-				if (c == '_') {
-					return std::tolower(' ');
-				}
-				return std::tolower(c);
-			});
-		errorCodeNormalized[0] = std::toupper(errorCodeNormalized[0]);
-		errorMsg = errorCodeNormalized + " at " + std::to_string(parseError.offset);
-
-		if (parseError.preContext[0] != 0 || parseError.postContext[0] != 0) {
-			icu::UnicodeString pre(parseError.preContext);
-			icu::UnicodeString post(parseError.postContext);
-			std::string preStr, postStr;
-			pre.toUTF8String(preStr);
-			post.toUTF8String(postStr);
-			errorMsg += " (near: '" + preStr + "' -> '" + postStr + "')";
-		}
-
-		delete regexPattern;
-		return false;
+bool validateRegex(const QString &pattern, QString &errorMsg) {
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		return bridge->validateRegexPattern(pattern, errorMsg);
 	}
-
-	delete regexPattern;
 	return true;
 }
 
@@ -102,15 +66,15 @@ not_null<Ui::SlideWrap<Ui::FlatLabel>*> AddError(
 	not_null<Ui::VerticalLayout*> content,
 	Ui::InputField *input) {
 
-	std::string errorText;
-	validateRegex(icu::UnicodeString::fromUTF8("("), errorText);
+	QString errorText;
+	validateRegex(u"("_q, errorText);
 
 	const auto error = content->add(
 		object_ptr<Ui::SlideWrap<Ui::FlatLabel>>(
 			content,
 			object_ptr<Ui::FlatLabel>(
 				content,
-				QString::fromStdString(errorText) + QString::fromStdString(errorText),
+				errorText + errorText,
 				st::settingLocalPasscodeError), st::settingsCheckboxPadding));
 	error->hide(anim::type::instant);
 	if (input) {
@@ -182,9 +146,9 @@ void RegexEditBuilder(
 			return;
 		}
 
-		std::string error;
-		if (!validateRegex(icu::UnicodeString::fromUTF8(text.toStdString()), error)) {
-			errorText->entity()->setText(QString::fromStdString(error));
+		QString error;
+		if (!validateRegex(text, error)) {
+			errorText->entity()->setText(error);
 			errorText->show(anim::type::normal);
 			return;
 		}
