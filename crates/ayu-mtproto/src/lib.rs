@@ -3,6 +3,7 @@ pub mod interceptor;
 pub mod multiplexer;
 pub mod protocol;
 pub mod sync;
+pub mod tokio_tcp;
 pub mod transfer;
 
 pub use error::MtprotoError;
@@ -12,6 +13,10 @@ pub use protocol::{
     AuthKey, AuthKeyId, EncryptedEnvelope, MsgIdGenerator, ReconnectPolicy, SessionId, TlMethodTag,
 };
 pub use sync::{PendingOutgoingMessage, PtsCheckResult, UpdatesSynchronizer};
+pub use tokio_tcp::{
+    TokioTcpManager, TCP_EVENT_CONNECTED, TCP_EVENT_DISCONNECTED, TCP_EVENT_ERROR,
+    TCP_EVENT_READY_READ,
+};
 pub use transfer::{
     compute_upload_part_size, FileTransferManager, TransferDirection, TransferProgress,
     TransferState, BIG_FILE_THRESHOLD, DEFAULT_MAX_INFLIGHT_BYTES, DOWNLOAD_PART_SIZE,

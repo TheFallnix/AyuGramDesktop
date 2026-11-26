@@ -5,6 +5,9 @@
 
 #include <utility>
 
+extern "C" void ayu_ffi_set_tcp_notify_hook(
+	void(*cb)(std::uint64_t, std::uint8_t));
+
 namespace Ayu::Ffi {
 namespace {
 
@@ -2037,6 +2040,58 @@ auto RustBridge::kvStats(const QString &ns) const
 		return out;
 	} catch (const rust::Error &) {
 		return {};
+	}
+}
+
+void RustBridge::SetTcpNotifyHook(TcpNotifyCallback cb) {
+	ayu_ffi_set_tcp_notify_hook(cb);
+}
+
+std::uint64_t RustBridge::tcpConnect(const QString &host, std::uint16_t port) {
+	if (!_impl) {
+		return 0;
+	}
+	const auto utf8 = host.toUtf8();
+	return _impl->engine->tcp_connect(
+		rust::Str(utf8.constData(), utf8.size()),
+		port);
+}
+
+bool RustBridge::tcpWrite(
+		std::uint64_t id,
+		const void *data,
+		std::size_t size) {
+	if (!_impl || !data || size == 0) {
+		return false;
+	}
+	return _impl->engine->tcp_write(
+		id,
+		rust::Slice<const std::uint8_t>(
+			reinterpret_cast<const std::uint8_t*>(data),
+			size));
+}
+
+QByteArray RustBridge::tcpRead(std::uint64_t id, std::size_t maxLen) {
+	if (!_impl || maxLen == 0) {
+		return {};
+	}
+	const auto bytes = _impl->engine->tcp_read(id, maxLen);
+	return QByteArray(
+		reinterpret_cast<const char*>(bytes.data()),
+		int(bytes.size()));
+}
+
+bool RustBridge::tcpHasBytes(std::uint64_t id) const {
+	return _impl ? _impl->engine->tcp_has_bytes(id) : false;
+}
+
+bool RustBridge::tcpIsConnected(std::uint64_t id) const {
+	return _impl ? _impl->engine->tcp_is_connected(id) : false;
+}
+
+void RustBridge::tcpClose(std::uint64_t id) {
+	if (_impl && id != 0) {
+		_impl->engine->tcp_close(id);
 	}
 }
 

@@ -13,7 +13,7 @@ use ayu_core::{
 };
 use ayu_mtproto::{
     AsyncTransport, AuthKey, FileTransferManager, MtprotoError, MtprotoMultiplexer, PtsCheckResult,
-    SessionId, TransferProgress, TransportFuture, UpdatesSynchronizer,
+    SessionId, TokioTcpManager, TransferProgress, TransportFuture, UpdatesSynchronizer,
 };
 use ayu_storage::{ByteBoundedMediaCache, SqliteStorage};
 use smallvec::SmallVec;
@@ -639,6 +639,13 @@ mod ffi {
         fn kv_clear(self: &AyuRustEngine, ns: &str) -> Result<()>;
         fn kv_clear_by_tag(self: &AyuRustEngine, ns: &str, tag: u8) -> Result<()>;
         fn kv_stats(self: &AyuRustEngine, ns: &str) -> Result<Vec<FfiKvTagStat>>;
+
+        fn tcp_connect(self: &AyuRustEngine, host: &str, port: u16) -> u64;
+        fn tcp_write(self: &AyuRustEngine, id: u64, data: &[u8]) -> bool;
+        fn tcp_read(self: &AyuRustEngine, id: u64, max_len: usize) -> Vec<u8>;
+        fn tcp_has_bytes(self: &AyuRustEngine, id: u64) -> bool;
+        fn tcp_is_connected(self: &AyuRustEngine, id: u64) -> bool;
+        fn tcp_close(self: &AyuRustEngine, id: u64);
     }
 }
 
@@ -686,9 +693,20 @@ impl AsyncTransport for Stage1BridgeTransport {
 type ActiveWindowMap = HashMap<(AccountId, DialogId), VirtualizedHistoryWindow<Arc<SqliteStorage>>>;
 type ActiveDialogWindowMap = HashMap<(AccountId, i32), VirtualizedDialogWindow<Arc<SqliteStorage>>>;
 
+type TcpNotifyFn = extern "C" fn(u64, u8);
+static TCP_NOTIFY_HOOK: Mutex<Option<TcpNotifyFn>> = Mutex::new(None);
+
+#[no_mangle]
+pub extern "C" fn ayu_ffi_set_tcp_notify_hook(cb: Option<TcpNotifyFn>) {
+    if let Ok(mut guard) = TCP_NOTIFY_HOOK.lock() {
+        *guard = cb;
+    }
+}
+
 /// Core Rust backend engine exposed safely to C++/Qt through `cxx`.
 pub struct AyuRustEngine {
     _runtime: Runtime,
+    tcp: TokioTcpManager,
     orchestrator: Mutex<MultiAccountOrchestrator>,
     storage: Arc<SqliteStorage>,
     media_cache: ByteBoundedMediaCache,
@@ -732,8 +750,11 @@ impl AyuRustEngine {
             let _ = filters_engine.rebuild(&rules, &exclusions);
         }
 
+        let tcp = TokioTcpManager::new(runtime.handle().clone());
+
         Ok(Self {
             _runtime: runtime,
+            tcp,
             orchestrator: Mutex::new(MultiAccountOrchestrator::new()),
             storage,
             media_cache: ByteBoundedMediaCache::new(limit_bytes),
@@ -1582,6 +1603,7 @@ impl AyuRustEngine {
                 keep
             });
         }
+        self.storage.shrink_memory();
         let target = self.media_cache.max_bytes() / 2;
         let freed_bytes = self.media_cache.shrink_for_background_account(target);
         freed_count.saturating_add(freed_bytes)
@@ -2332,6 +2354,36 @@ impl AyuRustEngine {
                 total_size,
             })
             .collect())
+    }
+
+    pub fn tcp_connect(&self, host: &str, port: u16) -> u64 {
+        let cb = Arc::new(|socket_id: u64, event_kind: u8| {
+            let hook = TCP_NOTIFY_HOOK.lock().ok().and_then(|g| *g);
+            if let Some(f) = hook {
+                f(socket_id, event_kind);
+            }
+        });
+        self.tcp.connect(host.to_owned(), port, cb)
+    }
+
+    pub fn tcp_write(&self, id: u64, data: &[u8]) -> bool {
+        self.tcp.write(id, data)
+    }
+
+    pub fn tcp_read(&self, id: u64, max_len: usize) -> Vec<u8> {
+        self.tcp.read(id, max_len)
+    }
+
+    pub fn tcp_has_bytes(&self, id: u64) -> bool {
+        self.tcp.has_bytes(id)
+    }
+
+    pub fn tcp_is_connected(&self, id: u64) -> bool {
+        self.tcp.is_connected(id)
+    }
+
+    pub fn tcp_close(&self, id: u64) {
+        self.tcp.close(id);
     }
 }
 

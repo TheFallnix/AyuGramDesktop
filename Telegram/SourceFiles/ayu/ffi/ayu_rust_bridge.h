@@ -494,6 +494,15 @@ public:
 	bool kvClearByTag(const QString &ns, std::uint8_t tag);
 	[[nodiscard]] std::vector<BridgeKvTagStat> kvStats(const QString &ns) const;
 
+	using TcpNotifyCallback = void(*)(std::uint64_t, std::uint8_t);
+	static void SetTcpNotifyHook(TcpNotifyCallback cb);
+	[[nodiscard]] std::uint64_t tcpConnect(const QString &host, std::uint16_t port);
+	bool tcpWrite(std::uint64_t id, const void *data, std::size_t size);
+	[[nodiscard]] QByteArray tcpRead(std::uint64_t id, std::size_t maxLen);
+	[[nodiscard]] bool tcpHasBytes(std::uint64_t id) const;
+	[[nodiscard]] bool tcpIsConnected(std::uint64_t id) const;
+	void tcpClose(std::uint64_t id);
+
 private:
 	struct Impl;
 	explicit RustBridge(std::unique_ptr<Impl> impl);

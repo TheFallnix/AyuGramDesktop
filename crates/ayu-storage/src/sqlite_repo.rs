@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ayu_core::{
@@ -16,10 +17,11 @@ use crate::error::StorageError;
 /// SQLite storage backend configured for WAL mode and bounded RAM footprint.
 pub struct SqliteStorage {
     conn: Mutex<Connection>,
+    kv_write_counter: AtomicU32,
 }
 
 impl SqliteStorage {
-    /// Opens (or creates) a disk-backed SQLite database in WAL mode with capped 4 MB page cache.
+    /// Opens (or creates) a disk-backed SQLite database in WAL mode with capped 1 MB page cache.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
         if let Some(parent) = path.as_ref().parent() {
             if !parent.as_os_str().is_empty() {
@@ -31,6 +33,7 @@ impl SqliteStorage {
         Self::initialize_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            kv_write_counter: AtomicU32::new(0),
         })
     }
 
@@ -41,7 +44,14 @@ impl SqliteStorage {
         Self::initialize_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            kv_write_counter: AtomicU32::new(0),
         })
+    }
+
+    pub fn shrink_memory(&self) {
+        if let Ok(guard) = self.conn.lock() {
+            let _ = guard.execute_batch("PRAGMA wal_checkpoint(PASSIVE); PRAGMA shrink_memory;");
+        }
     }
 
     /// Returns the active SQLite `journal_mode` pragma (e.g. `"wal"` for disk DBs).
@@ -447,7 +457,12 @@ impl SqliteStorage {
             now,
             data,
         ])?;
-        if max_bytes > 0 {
+        if max_bytes > 0
+            && self
+                .kv_write_counter
+                .fetch_add(1, Ordering::Relaxed)
+                .is_multiple_of(64)
+        {
             let total: i64 = guard.query_row(
                 "SELECT COALESCE(SUM(size_bytes), 0) FROM kv_cache WHERE ns = ?1",
                 params![ns],

@@ -83,7 +83,6 @@ public:
 		if (_opened && key.valid()) {
 			if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 				bridge->kvRemove(_ns, key.high, key.low);
-				refreshStats();
 			}
 		}
 		if (done) {
@@ -189,7 +188,6 @@ private:
 					value.bytes,
 					onlyIfEmpty,
 					std::int64_t(_settings.totalSizeLimit));
-				refreshStats();
 			}
 		}
 		if (done) {
@@ -211,7 +209,6 @@ private:
 					to.high,
 					to.low,
 					isMove);
-				refreshStats();
 			}
 		}
 		if (done) {

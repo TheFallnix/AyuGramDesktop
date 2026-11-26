@@ -10,6 +10,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mtproto/details/mtproto_tcp_socket.h"
 #include "mtproto/details/mtproto_tls_socket.h"
 
+// AyuGram includes
+#include "ayu/ffi/ayu_rust_bridge.h"
+#include "ayu/mtproto/rust_tcp_socket.h"
+
+
 namespace MTP::details {
 
 std::unique_ptr<AbstractSocket> AbstractSocket::Create(
@@ -23,6 +28,9 @@ std::unique_ptr<AbstractSocket> AbstractSocket::Create(
 			secret,
 			proxy,
 			protocolForFiles);
+	} else if (proxy.type() == QNetworkProxy::NoProxy
+			&& Ayu::Ffi::RustBridge::Global() != nullptr) {
+		return std::make_unique<RustTcpSocket>(thread);
 	} else {
 		return std::make_unique<TcpSocket>(thread, proxy, protocolForFiles);
 	}
