@@ -23,6 +23,8 @@
 #include "ui/chat/chat_style_radius.h"
 #include "utils/rc_manager.h"
 
+#include <QtGui/QPixmapCache>
+
 #ifdef Q_OS_WIN
 #include "ayu/utils/windows_utils.h"
 #endif
@@ -41,6 +43,7 @@ void initLang() {
 }
 
 void initUiSettings() {
+	QPixmapCache::setCacheLimit(4096);
 	const auto &settings = AyuSettings::getInstance();
 
 	AyuUiSettings::setMonoFont(settings.monoFont());
@@ -51,8 +54,8 @@ void initUiSettings() {
 }
 
 void initDatabase() {
-	AyuDatabase::initialize();
 	Ayu::Ffi::RustBridge::InitializeGlobal(u"./tdata/ayu_rust.db"_q, 4);
+	AyuDatabase::initialize();
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		const auto &domain = Core::App().domain();
 		for (const auto &[index, account] : domain.accounts()) {

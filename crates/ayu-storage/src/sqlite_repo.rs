@@ -199,9 +199,200 @@ impl SqliteStorage {
                 pts INTEGER NOT NULL,
                 PRIMARY KEY (account_id, channel_id)
             ) STRICT;
+
+            CREATE TABLE IF NOT EXISTS ayu_deleted_records (
+                fake_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                dialog_id INTEGER NOT NULL,
+                topic_id INTEGER NOT NULL,
+                msg_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                payload BLOB NOT NULL
+            ) STRICT;
+            CREATE INDEX IF NOT EXISTS idx_ayu_deleted_records_lookup
+                ON ayu_deleted_records (user_id, dialog_id, topic_id, msg_id);
+
+            CREATE TABLE IF NOT EXISTS ayu_edited_records (
+                fake_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                dialog_id INTEGER NOT NULL,
+                msg_id INTEGER NOT NULL,
+                payload BLOB NOT NULL
+            ) STRICT;
+            CREATE INDEX IF NOT EXISTS idx_ayu_edited_records_lookup
+                ON ayu_edited_records (user_id, dialog_id, msg_id);
             ",
         )?;
         Ok(())
+    }
+
+    pub fn insert_deleted_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+        msg_id: i32,
+        text: &str,
+        payload: &[u8],
+    ) -> Result<i64, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "INSERT INTO ayu_deleted_records (user_id, dialog_id, topic_id, msg_id, text, payload)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?;
+        stmt.execute(params![user_id, dialog_id, topic_id, msg_id, text, payload])?;
+        Ok(guard.last_insert_rowid())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn query_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+        min_id: i64,
+        max_id: i64,
+        limit: usize,
+        search_query: &str,
+    ) -> Result<Vec<(i64, Vec<u8>)>, StorageError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let like_pattern = (!search_query.is_empty()).then(|| Self::escape_like_pattern(search_query));
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "
+            SELECT fake_id, payload
+            FROM ayu_deleted_records
+            WHERE user_id = ?1
+              AND dialog_id = ?2
+              AND (topic_id = ?3 OR ?3 = 0)
+              AND (msg_id > ?4 OR ?4 = 0)
+              AND (msg_id < ?5 OR ?5 = 0)
+              AND (?6 IS NULL OR text LIKE ?6 ESCAPE '\\')
+            ORDER BY msg_id DESC
+            LIMIT ?7
+            ",
+        )?;
+        let rows = stmt.query_map(
+            params![user_id, dialog_id, topic_id, min_id, max_id, like_pattern, limit as i64],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )?;
+        let mut out = Vec::with_capacity(limit.min(64));
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    pub fn has_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+    ) -> Result<bool, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "SELECT 1 FROM ayu_deleted_records
+             WHERE user_id = ?1 AND dialog_id = ?2 AND (topic_id = ?3 OR ?3 = 0)
+             LIMIT 1",
+        )?;
+        Ok(stmt.query_row(params![user_id, dialog_id, topic_id], |_| Ok(())).optional()?.is_some())
+    }
+
+    pub fn remove_deleted_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+    ) -> Result<usize, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "DELETE FROM ayu_deleted_records WHERE user_id = ?1 AND dialog_id = ?2 AND msg_id = ?3",
+        )?;
+        Ok(stmt.execute(params![user_id, dialog_id, msg_id])?)
+    }
+
+    pub fn clear_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+    ) -> Result<usize, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "DELETE FROM ayu_deleted_records
+             WHERE user_id = ?1 AND dialog_id = ?2 AND (topic_id = ?3 OR ?3 = 0)",
+        )?;
+        Ok(stmt.execute(params![user_id, dialog_id, topic_id])?)
+    }
+
+    pub fn insert_edited_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+        payload: &[u8],
+    ) -> Result<i64, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "INSERT INTO ayu_edited_records (user_id, dialog_id, msg_id, payload)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        stmt.execute(params![user_id, dialog_id, msg_id, payload])?;
+        Ok(guard.last_insert_rowid())
+    }
+
+    pub fn query_edited_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+        min_id: i64,
+        max_id: i64,
+        limit: usize,
+    ) -> Result<Vec<(i64, Vec<u8>)>, StorageError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "
+            SELECT fake_id, payload
+            FROM ayu_edited_records
+            WHERE user_id = ?1
+              AND dialog_id = ?2
+              AND msg_id = ?3
+              AND (fake_id > ?4 OR ?4 = 0)
+              AND (fake_id < ?5 OR ?5 = 0)
+            ORDER BY fake_id DESC
+            LIMIT ?6
+            ",
+        )?;
+        let rows = stmt.query_map(
+            params![user_id, dialog_id, msg_id, min_id, max_id, limit as i64],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )?;
+        let mut out = Vec::with_capacity(limit.min(64));
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    pub fn has_edited_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+    ) -> Result<bool, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "SELECT 1 FROM ayu_edited_records
+             WHERE user_id = ?1 AND dialog_id = ?2 AND msg_id = ?3
+             LIMIT 1",
+        )?;
+        Ok(stmt.query_row(params![user_id, dialog_id, msg_id], |_| Ok(())).optional()?.is_some())
     }
 
     fn decode_entities(blob: &[u8]) -> Result<SmallVec<[MessageEntitySpan; 2]>, StorageError> {

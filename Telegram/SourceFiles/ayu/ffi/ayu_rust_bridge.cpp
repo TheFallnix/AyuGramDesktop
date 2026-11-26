@@ -1625,4 +1625,227 @@ bool RustBridge::consumeDisableGhostOnStoryClose(std::uint64_t accountId) {
 		: false;
 }
 
+auto RustBridge::listRegexExclusions()
+-> std::vector<BridgeRegexExclusion> {
+	if (!_impl) {
+		return {};
+	}
+	try {
+		const auto items = _impl->engine->list_regex_exclusions();
+		auto out = std::vector<BridgeRegexExclusion>();
+		out.reserve(items.size());
+		for (const auto &item : items) {
+			out.push_back(BridgeRegexExclusion{
+				.dialogId = item.dialog_id,
+				.filterId = QByteArray(
+					reinterpret_cast<const char*>(item.filter_id.data()),
+					int(item.filter_id.size())),
+			});
+		}
+		_impl->lastError.clear();
+		return out;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return {};
+	}
+}
+
+std::int64_t RustBridge::insertDeletedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId,
+		std::int32_t msgId,
+		const QString &text,
+		const QByteArray &payload) {
+	if (!_impl) {
+		return 0;
+	}
+	try {
+		const auto utf8 = text.toUtf8();
+		const auto id = _impl->engine->insert_deleted_record(
+			userId,
+			dialogId,
+			topicId,
+			msgId,
+			rust::Str(utf8.constData(), utf8.size()),
+			rust::Slice<const std::uint8_t>(
+				reinterpret_cast<const std::uint8_t*>(payload.constData()),
+				payload.size()));
+		_impl->lastError.clear();
+		return id;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return 0;
+	}
+}
+
+auto RustBridge::queryDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId,
+		std::int64_t minId,
+		std::int64_t maxId,
+		std::size_t limit,
+		const QString &searchQuery)
+-> std::vector<BridgeRawRecord> {
+	if (!_impl) {
+		return {};
+	}
+	try {
+		const auto utf8 = searchQuery.toUtf8();
+		const auto rows = _impl->engine->query_deleted_records(
+			userId,
+			dialogId,
+			topicId,
+			minId,
+			maxId,
+			limit,
+			rust::Str(utf8.constData(), utf8.size()));
+		auto out = std::vector<BridgeRawRecord>();
+		out.reserve(rows.size());
+		for (const auto &row : rows) {
+			out.push_back(BridgeRawRecord{
+				.fakeId = row.fake_id,
+				.payload = QByteArray(
+					reinterpret_cast<const char*>(row.payload.data()),
+					int(row.payload.size())),
+			});
+		}
+		_impl->lastError.clear();
+		return out;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return {};
+	}
+}
+
+bool RustBridge::hasDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId) const {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		return _impl->engine->has_deleted_records(userId, dialogId, topicId);
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+std::size_t RustBridge::removeDeletedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId) {
+	if (!_impl) {
+		return 0;
+	}
+	try {
+		const auto n = _impl->engine->remove_deleted_record(
+			userId,
+			dialogId,
+			msgId);
+		_impl->lastError.clear();
+		return n;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return 0;
+	}
+}
+
+std::size_t RustBridge::clearDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId) {
+	if (!_impl) {
+		return 0;
+	}
+	try {
+		const auto n = _impl->engine->clear_deleted_records(
+			userId,
+			dialogId,
+			topicId);
+		_impl->lastError.clear();
+		return n;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return 0;
+	}
+}
+
+std::int64_t RustBridge::insertEditedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId,
+		const QByteArray &payload) {
+	if (!_impl) {
+		return 0;
+	}
+	try {
+		const auto id = _impl->engine->insert_edited_record(
+			userId,
+			dialogId,
+			msgId,
+			rust::Slice<const std::uint8_t>(
+				reinterpret_cast<const std::uint8_t*>(payload.constData()),
+				payload.size()));
+		_impl->lastError.clear();
+		return id;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return 0;
+	}
+}
+
+auto RustBridge::queryEditedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId,
+		std::int64_t minId,
+		std::int64_t maxId,
+		std::size_t limit)
+-> std::vector<BridgeRawRecord> {
+	if (!_impl) {
+		return {};
+	}
+	try {
+		const auto rows = _impl->engine->query_edited_records(
+			userId,
+			dialogId,
+			msgId,
+			minId,
+			maxId,
+			limit);
+		auto out = std::vector<BridgeRawRecord>();
+		out.reserve(rows.size());
+		for (const auto &row : rows) {
+			out.push_back(BridgeRawRecord{
+				.fakeId = row.fake_id,
+				.payload = QByteArray(
+					reinterpret_cast<const char*>(row.payload.data()),
+					int(row.payload.size())),
+			});
+		}
+		_impl->lastError.clear();
+		return out;
+	} catch (const rust::Error &err) {
+		_impl->lastError = QString::fromUtf8(err.what());
+		return {};
+	}
+}
+
+bool RustBridge::hasEditedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId) const {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		return _impl->engine->has_edited_records(userId, dialogId, msgId);
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
 } // namespace Ayu::Ffi

@@ -152,6 +152,18 @@ mod ffi {
         pub dialog_id: i64,
     }
 
+    #[derive(Clone, Debug)]
+    pub struct FfiRegexExclusion {
+        pub dialog_id: i64,
+        pub filter_id: Vec<u8>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct FfiRawRecord {
+        pub fake_id: i64,
+        pub payload: Vec<u8>,
+    }
+
     extern "Rust" {
         type AyuRustEngine;
 
@@ -515,13 +527,74 @@ mod ffi {
         fn is_message_hidden(self: &AyuRustEngine, dialog_id: i64, msg_id: i32) -> bool;
         fn arm_disable_ghost_on_story_close(self: &AyuRustEngine, account_id: u64);
         fn consume_disable_ghost_on_story_close(self: &AyuRustEngine, account_id: u64) -> bool;
+
+        fn list_regex_exclusions(self: &AyuRustEngine) -> Result<Vec<FfiRegexExclusion>>;
+        fn insert_deleted_record(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            topic_id: i64,
+            msg_id: i32,
+            text: &str,
+            payload: &[u8],
+        ) -> Result<i64>;
+        fn query_deleted_records(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            topic_id: i64,
+            min_id: i64,
+            max_id: i64,
+            limit: usize,
+            search_query: &str,
+        ) -> Result<Vec<FfiRawRecord>>;
+        fn has_deleted_records(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            topic_id: i64,
+        ) -> Result<bool>;
+        fn remove_deleted_record(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            msg_id: i32,
+        ) -> Result<usize>;
+        fn clear_deleted_records(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            topic_id: i64,
+        ) -> Result<usize>;
+        fn insert_edited_record(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            msg_id: i32,
+            payload: &[u8],
+        ) -> Result<i64>;
+        fn query_edited_records(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            msg_id: i32,
+            min_id: i64,
+            max_id: i64,
+            limit: usize,
+        ) -> Result<Vec<FfiRawRecord>>;
+        fn has_edited_records(
+            self: &AyuRustEngine,
+            user_id: i64,
+            dialog_id: i64,
+            msg_id: i32,
+        ) -> Result<bool>;
     }
 }
 
 pub use ffi::{
     FfiAccountSnapshot, FfiDialogRow, FfiGhostConfig, FfiMemoryStats, FfiMessageRow,
-    FfiPtsOutcome, FfiRegexFilter, FfiResultStatus, FfiSyncState, FfiTransferProgress,
-    FfiUnreadBadge,
+    FfiPtsOutcome, FfiRawRecord, FfiRegexExclusion, FfiRegexFilter, FfiResultStatus, FfiSyncState,
+    FfiTransferProgress, FfiUnreadBadge,
 };
 
 struct Stage1BridgeTransport {
@@ -1987,6 +2060,130 @@ impl AyuRustEngine {
             .lock()
             .map(|mut guard| guard.consume_disable_ghost_on_story_close(AccountId(account_id)))
             .unwrap_or(false)
+    }
+
+    pub fn list_regex_exclusions(&self) -> Result<Vec<FfiRegexExclusion>> {
+        let items = self
+            .storage
+            .load_regex_exclusions()
+            .map_err(|err| anyhow!(err.to_string()))?;
+        Ok(items
+            .into_iter()
+            .map(|item| FfiRegexExclusion {
+                dialog_id: item.dialog_id.0,
+                filter_id: item.filter_id.into_vec(),
+            })
+            .collect())
+    }
+
+    pub fn insert_deleted_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+        msg_id: i32,
+        text: &str,
+        payload: &[u8],
+    ) -> Result<i64> {
+        self.storage
+            .insert_deleted_record(user_id, dialog_id, topic_id, msg_id, text, payload)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn query_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+        min_id: i64,
+        max_id: i64,
+        limit: usize,
+        search_query: &str,
+    ) -> Result<Vec<FfiRawRecord>> {
+        let rows = self
+            .storage
+            .query_deleted_records(user_id, dialog_id, topic_id, min_id, max_id, limit, search_query)
+            .map_err(|err| anyhow!(err.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|(fake_id, payload)| FfiRawRecord { fake_id, payload })
+            .collect())
+    }
+
+    pub fn has_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+    ) -> Result<bool> {
+        self.storage
+            .has_deleted_records(user_id, dialog_id, topic_id)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn remove_deleted_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+    ) -> Result<usize> {
+        self.storage
+            .remove_deleted_record(user_id, dialog_id, msg_id)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn clear_deleted_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        topic_id: i64,
+    ) -> Result<usize> {
+        self.storage
+            .clear_deleted_records(user_id, dialog_id, topic_id)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn insert_edited_record(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+        payload: &[u8],
+    ) -> Result<i64> {
+        self.storage
+            .insert_edited_record(user_id, dialog_id, msg_id, payload)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn query_edited_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+        min_id: i64,
+        max_id: i64,
+        limit: usize,
+    ) -> Result<Vec<FfiRawRecord>> {
+        let rows = self
+            .storage
+            .query_edited_records(user_id, dialog_id, msg_id, min_id, max_id, limit)
+            .map_err(|err| anyhow!(err.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|(fake_id, payload)| FfiRawRecord { fake_id, payload })
+            .collect())
+    }
+
+    pub fn has_edited_records(
+        &self,
+        user_id: i64,
+        dialog_id: i64,
+        msg_id: i32,
+    ) -> Result<bool> {
+        self.storage
+            .has_edited_records(user_id, dialog_id, msg_id)
+            .map_err(|err| anyhow!(err.to_string()))
     }
 }
 

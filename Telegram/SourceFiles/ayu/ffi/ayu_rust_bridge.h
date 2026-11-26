@@ -121,6 +121,16 @@ struct BridgeRegexFilter {
 	std::int64_t dialogId = 0;
 };
 
+struct BridgeRegexExclusion {
+	std::int64_t dialogId = 0;
+	QByteArray filterId;
+};
+
+struct BridgeRawRecord {
+	std::int64_t fakeId = 0;
+	QByteArray payload;
+};
+
 class RustBridge final {
 public:
 	static std::unique_ptr<RustBridge> Create(
@@ -392,6 +402,51 @@ public:
 		std::int32_t msgId) const;
 	void armDisableGhostOnStoryClose(std::uint64_t accountId);
 	bool consumeDisableGhostOnStoryClose(std::uint64_t accountId);
+
+	[[nodiscard]] std::vector<BridgeRegexExclusion> listRegexExclusions();
+	std::int64_t insertDeletedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId,
+		std::int32_t msgId,
+		const QString &text,
+		const QByteArray &payload);
+	[[nodiscard]] std::vector<BridgeRawRecord> queryDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId,
+		std::int64_t minId,
+		std::int64_t maxId,
+		std::size_t limit,
+		const QString &searchQuery);
+	[[nodiscard]] bool hasDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId) const;
+	std::size_t removeDeletedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId);
+	std::size_t clearDeletedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int64_t topicId);
+	std::int64_t insertEditedRecord(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId,
+		const QByteArray &payload);
+	[[nodiscard]] std::vector<BridgeRawRecord> queryEditedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId,
+		std::int64_t minId,
+		std::int64_t maxId,
+		std::size_t limit);
+	[[nodiscard]] bool hasEditedRecords(
+		std::int64_t userId,
+		std::int64_t dialogId,
+		std::int32_t msgId) const;
 
 private:
 	struct Impl;

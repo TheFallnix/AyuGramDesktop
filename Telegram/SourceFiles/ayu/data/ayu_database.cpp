@@ -8,215 +8,163 @@
 
 #include "ayu/data/entities.h"
 #include "ayu/ffi/ayu_rust_bridge.h"
-#include "ayu/libs/sqlite/sqlite_orm.h"
 #include "base/unixtime.h"
 
-#include <mutex>
-
-using namespace sqlite_orm;
-
-std::mutex databaseMutex;
-
-auto storage = make_storage(
-	"./tdata/ayudata.db",
-	make_table<SchemaVersion>(
-		"SchemaVersion",
-		make_column("id", &SchemaVersion::id, primary_key()),
-		make_column("version", &SchemaVersion::version)
-	),
-	make_index("idx_deleted_message_userId_dialogId_topicId_messageId",
-			   column<DeletedMessage>(&DeletedMessage::userId),
-			   column<DeletedMessage>(&DeletedMessage::dialogId),
-			   column<DeletedMessage>(&DeletedMessage::topicId),
-			   column<DeletedMessage>(&DeletedMessage::messageId)),
-	make_index("idx_edited_message_userId_dialogId_messageId",
-			   column<EditedMessage>(&EditedMessage::userId),
-			   column<EditedMessage>(&EditedMessage::dialogId),
-			   column<EditedMessage>(&EditedMessage::messageId)),
-	make_table<DeletedMessage>(
-		"DeletedMessage",
-		make_column("fakeId", &DeletedMessage::fakeId, primary_key().autoincrement()),
-		make_column("userId", &DeletedMessage::userId),
-		make_column("dialogId", &DeletedMessage::dialogId),
-		make_column("groupedId", &DeletedMessage::groupedId),
-		make_column("peerId", &DeletedMessage::peerId),
-		make_column("fromId", &DeletedMessage::fromId),
-		make_column("topicId", &DeletedMessage::topicId),
-		make_column("messageId", &DeletedMessage::messageId),
-		make_column("date", &DeletedMessage::date),
-		make_column("flags", &DeletedMessage::flags),
-		make_column("editDate", &DeletedMessage::editDate),
-		make_column("views", &DeletedMessage::views),
-		make_column("fwdFlags", &DeletedMessage::fwdFlags),
-		make_column("fwdFromId", &DeletedMessage::fwdFromId),
-		make_column("fwdName", &DeletedMessage::fwdName),
-		make_column("fwdDate", &DeletedMessage::fwdDate),
-		make_column("fwdPostAuthor", &DeletedMessage::fwdPostAuthor),
-		make_column("replyFlags", &DeletedMessage::replyFlags),
-		make_column("replyMessageId", &DeletedMessage::replyMessageId),
-		make_column("replyPeerId", &DeletedMessage::replyPeerId),
-		make_column("replyTopId", &DeletedMessage::replyTopId),
-		make_column("replyForumTopic", &DeletedMessage::replyForumTopic),
-		make_column("replySerialized", &DeletedMessage::replySerialized),
-		make_column("entityCreateDate", &DeletedMessage::entityCreateDate),
-		make_column("text", &DeletedMessage::text),
-		make_column("textEntities", &DeletedMessage::textEntities),
-		make_column("mediaPath", &DeletedMessage::mediaPath),
-		make_column("hqThumbPath", &DeletedMessage::hqThumbPath),
-		make_column("documentType", &DeletedMessage::documentType),
-		make_column("documentSerialized", &DeletedMessage::documentSerialized),
-		make_column("thumbsSerialized", &DeletedMessage::thumbsSerialized),
-		make_column("documentAttributesSerialized", &DeletedMessage::documentAttributesSerialized),
-		make_column("mimeType", &DeletedMessage::mimeType)
-	),
-	make_table<EditedMessage>(
-		"EditedMessage",
-		make_column("fakeId", &EditedMessage::fakeId, primary_key().autoincrement()),
-		make_column("userId", &EditedMessage::userId),
-		make_column("dialogId", &EditedMessage::dialogId),
-		make_column("groupedId", &EditedMessage::groupedId),
-		make_column("peerId", &EditedMessage::peerId),
-		make_column("fromId", &EditedMessage::fromId),
-		make_column("topicId", &EditedMessage::topicId),
-		make_column("messageId", &EditedMessage::messageId),
-		make_column("date", &EditedMessage::date),
-		make_column("flags", &EditedMessage::flags),
-		make_column("editDate", &EditedMessage::editDate),
-		make_column("views", &EditedMessage::views),
-		make_column("fwdFlags", &EditedMessage::fwdFlags),
-		make_column("fwdFromId", &EditedMessage::fwdFromId),
-		make_column("fwdName", &EditedMessage::fwdName),
-		make_column("fwdDate", &EditedMessage::fwdDate),
-		make_column("fwdPostAuthor", &EditedMessage::fwdPostAuthor),
-		make_column("replyFlags", &EditedMessage::replyFlags),
-		make_column("replyMessageId", &EditedMessage::replyMessageId),
-		make_column("replyPeerId", &EditedMessage::replyPeerId),
-		make_column("replyTopId", &EditedMessage::replyTopId),
-		make_column("replyForumTopic", &EditedMessage::replyForumTopic),
-		make_column("replySerialized", &EditedMessage::replySerialized),
-		make_column("entityCreateDate", &EditedMessage::entityCreateDate),
-		make_column("text", &EditedMessage::text),
-		make_column("textEntities", &EditedMessage::textEntities),
-		make_column("mediaPath", &EditedMessage::mediaPath),
-		make_column("hqThumbPath", &EditedMessage::hqThumbPath),
-		make_column("documentType", &EditedMessage::documentType),
-		make_column("documentSerialized", &EditedMessage::documentSerialized),
-		make_column("thumbsSerialized", &EditedMessage::thumbsSerialized),
-		make_column("documentAttributesSerialized", &EditedMessage::documentAttributesSerialized),
-		make_column("mimeType", &EditedMessage::mimeType)
-	),
-	make_table<DeletedDialog>(
-		"DeletedDialog",
-		make_column("fakeId", &DeletedDialog::fakeId, primary_key().autoincrement()),
-		make_column("userId", &DeletedDialog::userId),
-		make_column("dialogId", &DeletedDialog::dialogId),
-		make_column("peerId", &DeletedDialog::peerId),
-		make_column("folderId", &DeletedDialog::folderId),
-		make_column("topMessage", &DeletedDialog::topMessage),
-		make_column("lastMessageDate", &DeletedDialog::lastMessageDate),
-		make_column("flags", &DeletedDialog::flags),
-		make_column("entityCreateDate", &DeletedDialog::entityCreateDate)
-	),
-	make_table<RegexFilter>(
-		"RegexFilter",
-		make_column("id", &RegexFilter::id, primary_key()),
-		make_column("text", &RegexFilter::text),
-		make_column("enabled", &RegexFilter::enabled),
-		make_column("reversed", &RegexFilter::reversed),
-		make_column("caseInsensitive", &RegexFilter::caseInsensitive),
-		make_column("dialogId", &RegexFilter::dialogId)
-	),
-	make_table<RegexFilterGlobalExclusion>(
-		"RegexFilterGlobalExclusion",
-		make_column("fakeId", &RegexFilterGlobalExclusion::fakeId, primary_key().autoincrement()),
-		make_column("dialogId", &RegexFilterGlobalExclusion::dialogId),
-		make_column("filterId", &RegexFilterGlobalExclusion::filterId)
-	),
-	make_table<SpyMessageRead>(
-		"SpyMessageRead",
-		make_column("fakeId", &SpyMessageRead::fakeId, primary_key().autoincrement()),
-		make_column("userId", &SpyMessageRead::userId),
-		make_column("dialogId", &SpyMessageRead::dialogId),
-		make_column("messageId", &SpyMessageRead::messageId),
-		make_column("entityCreateDate", &SpyMessageRead::entityCreateDate)
-	),
-	make_table<SpyMessageContentsRead>(
-		"SpyMessageContentsRead",
-		make_column("fakeId", &SpyMessageContentsRead::fakeId, primary_key().autoincrement()),
-		make_column("userId", &SpyMessageContentsRead::userId),
-		make_column("dialogId", &SpyMessageContentsRead::dialogId),
-		make_column("messageId", &SpyMessageContentsRead::messageId),
-		make_column("entityCreateDate", &SpyMessageContentsRead::entityCreateDate)
-	)
-);
-
-namespace AyuMigrations {
-
-void migrateToV1(decltype(storage) &storage) {
-	// drop RegexFilter table as we've added primary_key()
-	try {
-		storage.drop_table_if_exists("RegexFilter");
-		LOG(("Migration to V1 successful."));
-	} catch (const std::exception &ex) {
-		LOG(("Migration to V1 failed: %1").arg(ex.what()));
-	}
-}
-
-}
-
-void runMigrations(decltype(storage) &storage) {
-	constexpr int kLatestVersion = 1;
-
-	const std::map<int, Fn<void(decltype(storage) &)>> migrations = {
-		{1, AyuMigrations::migrateToV1},
-	};
-
-	int currentVersion = 0;
-	try {
-		if (auto versionRow = storage.get_pointer<SchemaVersion>(1)) {
-			currentVersion = versionRow->version;
-		} else {
-			storage.insert(SchemaVersion{1, 0});
-		}
-	} catch (...) {
-		LOG(("No SchemaVersion, assuming 0"));
-		storage.insert(SchemaVersion{1, 0});
-	}
-
-	if (currentVersion >= kLatestVersion) {
-		LOG(("Database is ok"));
-		return;
-	}
-
-	LOG(("Database version: %1. Latest version: %2.").arg(currentVersion).arg(kLatestVersion));
-
-	for (int v = currentVersion + 1; v <= kLatestVersion; ++v) {
-		if (migrations.contains(v)) {
-			try {
-				LOG(("Migration for version: %1").arg(v));
-				storage.begin_transaction();
-
-				migrations.at(v)(storage);
-
-				storage.update_all(set(c(&SchemaVersion::version) = v), where(c(&SchemaVersion::id) == 1));
-				storage.commit();
-				LOG(("Applied migration for version: %1.").arg(v));
-			} catch (...) {
-				storage.rollback();
-				LOG(("Failed to apply migration for version: %1.").arg(v));
-				AyuDatabase::moveCurrentDatabase();
-
-				return;
-			}
-		}
-	}
-}
+#include <QtCore/QByteArray>
+#include <QtCore/QDataStream>
+#include <QtCore/QFile>
+#include <QtCore/QIODevice>
+#include <algorithm>
 
 namespace AyuDatabase {
 namespace {
 
+constexpr auto kRecordFormatVersion = qint32(1);
+
 [[nodiscard]] QByteArray ToQByteArray(const std::vector<char> &bytes) {
 	return QByteArray(bytes.data(), int(bytes.size()));
+}
+
+[[nodiscard]] std::vector<char> FromQByteArray(const QByteArray &bytes) {
+	return std::vector<char>(bytes.constBegin(), bytes.constEnd());
+}
+
+void WriteString(QDataStream &out, const std::string &value) {
+	out << QByteArray(value.data(), int(value.size()));
+}
+
+[[nodiscard]] std::string ReadString(QDataStream &in) {
+	auto raw = QByteArray();
+	in >> raw;
+	return std::string(raw.constData(), std::size_t(raw.size()));
+}
+
+void WriteBytes(QDataStream &out, const std::vector<char> &value) {
+	out << ToQByteArray(value);
+}
+
+[[nodiscard]] std::vector<char> ReadBytes(QDataStream &in) {
+	auto raw = QByteArray();
+	in >> raw;
+	return FromQByteArray(raw);
+}
+
+[[nodiscard]] QByteArray SerializeMessage(const AyuMessageBase &m) {
+	auto buf = QByteArray();
+	auto out = QDataStream(&buf, QIODevice::WriteOnly);
+	out.setVersion(QDataStream::Qt_6_0);
+	out << kRecordFormatVersion
+		<< qint64(m.userId)
+		<< qint64(m.dialogId)
+		<< qint64(m.groupedId)
+		<< qint64(m.peerId)
+		<< qint64(m.fromId)
+		<< qint64(m.topicId)
+		<< qint32(m.messageId)
+		<< qint32(m.date)
+		<< qint32(m.flags)
+		<< qint32(m.editDate)
+		<< qint32(m.views)
+		<< qint32(m.fwdFlags)
+		<< qint64(m.fwdFromId)
+		<< qint32(m.fwdDate)
+		<< qint32(m.replyFlags)
+		<< qint32(m.replyMessageId)
+		<< qint64(m.replyPeerId)
+		<< qint32(m.replyTopId)
+		<< m.replyForumTopic
+		<< qint32(m.entityCreateDate)
+		<< qint32(m.documentType);
+	WriteString(out, m.fwdName);
+	WriteString(out, m.fwdPostAuthor);
+	WriteString(out, m.postAuthor);
+	WriteBytes(out, m.replySerialized);
+	WriteBytes(out, m.replyMarkupSerialized);
+	WriteString(out, m.text);
+	WriteBytes(out, m.textEntities);
+	WriteString(out, m.mediaPath);
+	WriteString(out, m.hqThumbPath);
+	WriteBytes(out, m.documentSerialized);
+	WriteBytes(out, m.thumbsSerialized);
+	WriteBytes(out, m.documentAttributesSerialized);
+	WriteString(out, m.mimeType);
+	return buf;
+}
+
+template <typename T>
+[[nodiscard]] bool DeserializeMessage(
+		std::int64_t fakeId,
+		const QByteArray &payload,
+		T &m) {
+	auto in = QDataStream(payload);
+	in.setVersion(QDataStream::Qt_6_0);
+	auto version = qint32(0);
+	in >> version;
+	if (version != kRecordFormatVersion) {
+		return false;
+	}
+	auto userId = qint64(0);
+	auto dialogId = qint64(0);
+	auto groupedId = qint64(0);
+	auto peerId = qint64(0);
+	auto fromId = qint64(0);
+	auto topicId = qint64(0);
+	auto messageId = qint32(0);
+	auto date = qint32(0);
+	auto flags = qint32(0);
+	auto editDate = qint32(0);
+	auto views = qint32(0);
+	auto fwdFlags = qint32(0);
+	auto fwdFromId = qint64(0);
+	auto fwdDate = qint32(0);
+	auto replyFlags = qint32(0);
+	auto replyMessageId = qint32(0);
+	auto replyPeerId = qint64(0);
+	auto replyTopId = qint32(0);
+	auto replyForumTopic = false;
+	auto entityCreateDate = qint32(0);
+	auto documentType = qint32(0);
+	in >> userId >> dialogId >> groupedId >> peerId >> fromId >> topicId
+		>> messageId >> date >> flags >> editDate >> views >> fwdFlags
+		>> fwdFromId >> fwdDate >> replyFlags >> replyMessageId
+		>> replyPeerId >> replyTopId >> replyForumTopic >> entityCreateDate
+		>> documentType;
+	m.fakeId = ID(fakeId);
+	m.userId = ID(userId);
+	m.dialogId = ID(dialogId);
+	m.groupedId = ID(groupedId);
+	m.peerId = ID(peerId);
+	m.fromId = ID(fromId);
+	m.topicId = ID(topicId);
+	m.messageId = int(messageId);
+	m.date = int(date);
+	m.flags = int(flags);
+	m.editDate = int(editDate);
+	m.views = int(views);
+	m.fwdFlags = int(fwdFlags);
+	m.fwdFromId = ID(fwdFromId);
+	m.fwdDate = int(fwdDate);
+	m.replyFlags = int(replyFlags);
+	m.replyMessageId = int(replyMessageId);
+	m.replyPeerId = ID(replyPeerId);
+	m.replyTopId = int(replyTopId);
+	m.replyForumTopic = replyForumTopic;
+	m.entityCreateDate = int(entityCreateDate);
+	m.documentType = int(documentType);
+	m.fwdName = ReadString(in);
+	m.fwdPostAuthor = ReadString(in);
+	m.postAuthor = ReadString(in);
+	m.replySerialized = ReadBytes(in);
+	m.replyMarkupSerialized = ReadBytes(in);
+	m.text = ReadString(in);
+	m.textEntities = ReadBytes(in);
+	m.mediaPath = ReadString(in);
+	m.hqThumbPath = ReadString(in);
+	m.documentSerialized = ReadBytes(in);
+	m.thumbsSerialized = ReadBytes(in);
+	m.documentAttributesSerialized = ReadBytes(in);
+	m.mimeType = ReadString(in);
+	return (in.status() == QDataStream::Ok);
 }
 
 [[nodiscard]] Ayu::Ffi::BridgeRegexFilter ToBridgeFilter(
@@ -232,320 +180,254 @@ namespace {
 	};
 }
 
+[[nodiscard]] RegexFilter FromBridgeFilter(
+		const Ayu::Ffi::BridgeRegexFilter &filter) {
+	auto out = RegexFilter();
+	out.id = FromQByteArray(filter.id);
+	out.text = filter.pattern.toStdString();
+	out.enabled = filter.enabled;
+	out.reversed = filter.reversed;
+	out.caseInsensitive = filter.caseInsensitive;
+	if (filter.hasDialogId) {
+		out.dialogId = ID(filter.dialogId);
+	}
+	return out;
+}
+
 } // namespace
 
 void moveCurrentDatabase() {
 	const auto time = base::unixtime::now();
-
-	if (QFile::exists("./tdata/ayudata.db")) {
-		QFile::rename("./tdata/ayudata.db", QString("./tdata/ayudata_%1.db").arg(time));
-	}
-
-	if (QFile::exists("./tdata/ayudata.db-shm")) {
-		QFile::rename("./tdata/ayudata.db-shm", QString("./tdata/ayudata_%1.db-shm").arg(time));
-	}
-
-	if (QFile::exists("./tdata/ayudata.db-wal")) {
-		QFile::rename("./tdata/ayudata.db-wal", QString("./tdata/ayudata_%1.db-wal").arg(time));
-	}
+	const auto renameIf = [&](const QString &base, const QString &suffix) {
+		const auto path = base + suffix;
+		if (QFile::exists(path)) {
+			QFile::rename(
+				path,
+				u"%1_%2%3"_q.arg(base).arg(time).arg(suffix));
+		}
+	};
+	renameIf(u"./tdata/ayu_rust.db"_q, QString());
+	renameIf(u"./tdata/ayu_rust.db"_q, u"-shm"_q);
+	renameIf(u"./tdata/ayu_rust.db"_q, u"-wal"_q);
 }
 
 void initialize() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.sync_schema(true);
-
-		runMigrations(storage);
-
-		storage.sync_schema(true);
-	} catch (const std::exception &ex) {
-		LOG(("Database initialization failed: %1").arg(ex.what()));
-		moveCurrentDatabase();
-
-		storage.sync_schema(true);
-		if (!storage.get_pointer<SchemaVersion>(1)) {
-			storage.insert(SchemaVersion{1, 0});
-		}
-	}
-
-	try {
-		storage.open_forever();
-	} catch (const std::exception &ex) {
-		LOG(("Failed to keep database open: %1").arg(ex.what()));
+	if (!Ayu::Ffi::RustBridge::Global()) {
+		Ayu::Ffi::RustBridge::InitializeGlobal(u"./tdata/ayu_rust.db"_q, 4);
 	}
 }
 
 void addEditedMessage(const EditedMessage &message) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.begin_transaction();
-		storage.insert(message);
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save edited message for some reason: %1").arg(ex.what()));
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->insertEditedRecord(
+			std::int64_t(message.userId),
+			std::int64_t(message.dialogId),
+			std::int32_t(message.messageId),
+			SerializeMessage(message));
 	}
 }
 
-std::vector<EditedMessage> getEditedMessages(ID userId, ID dialogId, ID messageId, ID minId, ID maxId, int totalLimit) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get_all<EditedMessage>(
-			where(
-				column<EditedMessage>(&EditedMessage::userId) == userId and
-				column<EditedMessage>(&EditedMessage::dialogId) == dialogId and
-				column<EditedMessage>(&EditedMessage::messageId) == messageId and
-				(column<EditedMessage>(&EditedMessage::fakeId) > minId or minId == 0) and
-				(column<EditedMessage>(&EditedMessage::fakeId) < maxId or maxId == 0)
-			),
-			order_by(column<EditedMessage>(&EditedMessage::fakeId)).desc(),
-			limit(totalLimit)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get edited messages: %1").arg(ex.what()));
+std::vector<EditedMessage> getEditedMessages(
+		ID userId,
+		ID dialogId,
+		ID messageId,
+		ID minId,
+		ID maxId,
+		int totalLimit) {
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	if (!bridge || totalLimit <= 0) {
 		return {};
 	}
+	const auto raw = bridge->queryEditedRecords(
+		std::int64_t(userId),
+		std::int64_t(dialogId),
+		std::int32_t(messageId),
+		std::int64_t(minId),
+		std::int64_t(maxId),
+		std::size_t(totalLimit));
+	auto result = std::vector<EditedMessage>();
+	result.reserve(raw.size());
+	for (const auto &row : raw) {
+		auto msg = EditedMessage();
+		if (DeserializeMessage(row.fakeId, row.payload, msg)) {
+			result.push_back(std::move(msg));
+		}
+	}
+	return result;
 }
 
 bool hasRevisions(ID userId, ID dialogId, ID messageId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return !storage.select(
-			columns(column<EditedMessage>(&EditedMessage::messageId)),
-			where(
-				column<EditedMessage>(&EditedMessage::userId) == userId and
-				column<EditedMessage>(&EditedMessage::dialogId) == dialogId and
-				column<EditedMessage>(&EditedMessage::messageId) == messageId
-			),
-			limit(1)
-		).empty();
-	} catch (std::exception &ex) {
-		LOG(("Failed to check if message has revisions: %1").arg(ex.what()));
-		return false;
-	}
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	return bridge
+		? bridge->hasEditedRecords(
+			std::int64_t(userId),
+			std::int64_t(dialogId),
+			std::int32_t(messageId))
+		: false;
 }
 
 void addDeletedMessage(const DeletedMessage &message) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.begin_transaction();
-		storage.insert(message);
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save edited message for some reason: %1").arg(ex.what()));
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->insertDeletedRecord(
+			std::int64_t(message.userId),
+			std::int64_t(message.dialogId),
+			std::int64_t(message.topicId),
+			std::int32_t(message.messageId),
+			QString::fromStdString(message.text),
+			SerializeMessage(message));
 	}
 }
 
-std::vector<DeletedMessage> getDeletedMessages(ID userId, ID dialogId, ID topicId, ID minId, ID maxId, int totalLimit, const std::string &searchQuery) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		if (searchQuery.empty()) {
-			return storage.get_all<DeletedMessage>(
-				where(
-					column<DeletedMessage>(&DeletedMessage::userId) == userId and
-					column<DeletedMessage>(&DeletedMessage::dialogId) == dialogId and
-					(column<DeletedMessage>(&DeletedMessage::topicId) == topicId or topicId == 0) and
-					(column<DeletedMessage>(&DeletedMessage::messageId) > minId or minId == 0) and
-					(column<DeletedMessage>(&DeletedMessage::messageId) < maxId or maxId == 0)
-				),
-				order_by(column<DeletedMessage>(&DeletedMessage::messageId)).desc(),
-				limit(totalLimit)
-			);
-		}
-
-		std::string escaped;
-		escaped.reserve(searchQuery.size());
-		for (const auto c : searchQuery) {
-			if (c == '%' || c == '_' || c == '\\') {
-				escaped += '\\';
-			}
-			escaped += c;
-		}
-		const auto pattern = "%" + escaped + "%";
-		return storage.get_all<DeletedMessage>(
-			where(
-				column<DeletedMessage>(&DeletedMessage::userId) == userId and
-				column<DeletedMessage>(&DeletedMessage::dialogId) == dialogId and
-				(column<DeletedMessage>(&DeletedMessage::topicId) == topicId or topicId == 0) and
-				(column<DeletedMessage>(&DeletedMessage::messageId) > minId or minId == 0) and
-				(column<DeletedMessage>(&DeletedMessage::messageId) < maxId or maxId == 0) and
-				like(column<DeletedMessage>(&DeletedMessage::text), pattern, "\\")
-			),
-			order_by(column<DeletedMessage>(&DeletedMessage::messageId)).desc(),
-			limit(totalLimit)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get deleted messages: %1").arg(ex.what()));
+std::vector<DeletedMessage> getDeletedMessages(
+		ID userId,
+		ID dialogId,
+		ID topicId,
+		ID minId,
+		ID maxId,
+		int totalLimit,
+		const std::string &searchQuery) {
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	if (!bridge || totalLimit <= 0) {
 		return {};
 	}
+	const auto raw = bridge->queryDeletedRecords(
+		std::int64_t(userId),
+		std::int64_t(dialogId),
+		std::int64_t(topicId),
+		std::int64_t(minId),
+		std::int64_t(maxId),
+		std::size_t(totalLimit),
+		QString::fromStdString(searchQuery));
+	auto result = std::vector<DeletedMessage>();
+	result.reserve(raw.size());
+	for (const auto &row : raw) {
+		auto msg = DeletedMessage();
+		if (DeserializeMessage(row.fakeId, row.payload, msg)) {
+			result.push_back(std::move(msg));
+		}
+	}
+	return result;
 }
 
 bool hasDeletedMessages(ID userId, ID dialogId, ID topicId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return !storage.select(
-			columns(column<DeletedMessage>(&DeletedMessage::dialogId)),
-			where(
-				column<DeletedMessage>(&DeletedMessage::userId) == userId and
-				column<DeletedMessage>(&DeletedMessage::dialogId) == dialogId and
-				(column<DeletedMessage>(&DeletedMessage::topicId) == topicId or topicId == 0)
-			),
-			limit(1)
-		).empty();
-	} catch (std::exception &ex) {
-		LOG(("Failed to check if dialog has deleted message: %1").arg(ex.what()));
-		return false;
-	}
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	return bridge
+		? bridge->hasDeletedRecords(
+			std::int64_t(userId),
+			std::int64_t(dialogId),
+			std::int64_t(topicId))
+		: false;
 }
 
 void removeDeletedMessage(ID userId, ID dialogId, ID messageId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<DeletedMessage>(
-			where(
-				column<DeletedMessage>(&DeletedMessage::userId) == userId and
-				column<DeletedMessage>(&DeletedMessage::dialogId) == dialogId and
-				column<DeletedMessage>(&DeletedMessage::messageId) == messageId
-			)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to remove deleted message: %1").arg(ex.what()));
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->removeDeletedRecord(
+			std::int64_t(userId),
+			std::int64_t(dialogId),
+			std::int32_t(messageId));
 	}
 }
 
 void clearDeletedMessages(ID userId, ID dialogId, ID topicId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<DeletedMessage>(
-			where(
-				column<DeletedMessage>(&DeletedMessage::userId) == userId and
-				column<DeletedMessage>(&DeletedMessage::dialogId) == dialogId and
-				(column<DeletedMessage>(&DeletedMessage::topicId) == topicId or topicId == 0)
-			)
-		);
-	} catch (std::exception &) {
-	}
-}
-
-template<typename T>
-std::vector<T> getAllT() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get_all<T>();
-	} catch (std::exception &ex) {
-		LOG(("Failed to get all: %1").arg(ex.what()));
-		return {};
+	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
+		bridge->clearDeletedRecords(
+			std::int64_t(userId),
+			std::int64_t(dialogId),
+			std::int64_t(topicId));
 	}
 }
 
 std::vector<RegexFilter> getAllRegexFilters() {
-	return getAllT<RegexFilter>();
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	if (!bridge) {
+		return {};
+	}
+	const auto items = bridge->listRegexFilters();
+	auto out = std::vector<RegexFilter>();
+	out.reserve(items.size());
+	for (const auto &item : items) {
+		out.push_back(FromBridgeFilter(item));
+	}
+	return out;
 }
 
 std::vector<RegexFilterGlobalExclusion> getAllFiltersExclusions() {
-	return getAllT<RegexFilterGlobalExclusion>();
+	const auto bridge = Ayu::Ffi::RustBridge::Global();
+	if (!bridge) {
+		return {};
+	}
+	const auto items = bridge->listRegexExclusions();
+	auto out = std::vector<RegexFilterGlobalExclusion>();
+	out.reserve(items.size());
+	auto idx = ID(1);
+	for (const auto &item : items) {
+		auto ex = RegexFilterGlobalExclusion();
+		ex.fakeId = idx++;
+		ex.dialogId = ID(item.dialogId);
+		ex.filterId = FromQByteArray(item.filterId);
+		out.push_back(std::move(ex));
+	}
+	return out;
 }
 
 std::vector<RegexFilter> getExcludedByDialogId(ID dialogId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get_all<RegexFilter>(
-			where(in(&RegexFilter::id,
-					 storage.select(columns(&RegexFilterGlobalExclusion::filterId),
-									where(is_equal(&RegexFilterGlobalExclusion::dialogId, dialogId))
-					 )
-			))
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get excluded by dialog id: %1").arg(ex.what()));
-		return {};
+	const auto exclusions = getAllFiltersExclusions();
+	const auto filters = getAllRegexFilters();
+	auto out = std::vector<RegexFilter>();
+	for (const auto &filter : filters) {
+		const auto excluded = std::any_of(
+			exclusions.begin(),
+			exclusions.end(),
+			[&](const RegexFilterGlobalExclusion &ex) {
+				return (ex.dialogId == dialogId) && (ex.filterId == filter.id);
+			});
+		if (excluded) {
+			out.push_back(filter);
+		}
 	}
+	return out;
 }
 
 int getCount() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.count<RegexFilter>();
-	} catch (std::exception &ex) {
-		LOG(("Failed to get count: %1").arg(ex.what()));
-		return 0;
-	}
+	return int(getAllRegexFilters().size());
 }
 
 RegexFilter getById(std::vector<char> id) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get<RegexFilter>(
-			where(column<RegexFilter>(&RegexFilter::id) == std::move(id))
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get filters by id: %1").arg(ex.what()));
-		return {};
+	for (const auto &filter : getAllRegexFilters()) {
+		if (filter.id == id) {
+			return filter;
+		}
 	}
+	return {};
 }
 
 std::vector<RegexFilter> getShared() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get_all<RegexFilter>(
-			where(is_null(column<RegexFilter>(&RegexFilter::dialogId)))
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get shared filters: %1").arg(ex.what()));
-		return {};
+	auto out = std::vector<RegexFilter>();
+	for (const auto &filter : getAllRegexFilters()) {
+		if (!filter.dialogId.has_value()) {
+			out.push_back(filter);
+		}
 	}
+	return out;
 }
 
 std::vector<RegexFilter> getByDialogId(ID dialogId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return storage.get_all<RegexFilter>(
-			where(column<RegexFilter>(&RegexFilter::dialogId) == dialogId)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to get filters by dialog id: %1").arg(ex.what()));
-		return {};
+	auto out = std::vector<RegexFilter>();
+	for (const auto &filter : getAllRegexFilters()) {
+		if (filter.dialogId && *filter.dialogId == dialogId) {
+			out.push_back(filter);
+		}
 	}
+	return out;
 }
 
 void addRegexFilter(const RegexFilter &filter) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.begin_transaction();
-		storage.replace(filter); // we're using replace as we set std::vector<char> as primary key
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save regex filter for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->upsertRegexFilter(ToBridgeFilter(filter));
 	}
 }
 
 void addRegexExclusion(const RegexFilterGlobalExclusion &exclusion) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.begin_transaction();
-		storage.insert(exclusion);
-		storage.commit();
-	} catch (std::exception &ex) {
-		try {
-			storage.rollback();
-		} catch (...) {
-		}
-		LOG(("Failed to save regex filter exclusion for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->addRegexExclusion(
 			std::int64_t(exclusion.dialogId),
@@ -554,65 +436,24 @@ void addRegexExclusion(const RegexFilterGlobalExclusion &exclusion) {
 }
 
 void updateRegexFilter(const RegexFilter &filter) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.update_all(
-			set(
-				c(&RegexFilter::text) = filter.text,
-				c(&RegexFilter::enabled) = filter.enabled,
-				c(&RegexFilter::reversed) = filter.reversed,
-				c(&RegexFilter::caseInsensitive) = filter.caseInsensitive,
-				c(&RegexFilter::dialogId) = filter.dialogId
-			),
-			where(c(&RegexFilter::id) == filter.id)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to update regex filter for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->upsertRegexFilter(ToBridgeFilter(filter));
 	}
 }
 
 void deleteFilter(const std::vector<char> &id) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<RegexFilter>(
-			where(column<RegexFilter>(&RegexFilter::id) == id)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to delete regex filter for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->deleteRegexFilter(ToQByteArray(id));
 	}
 }
 
 void deleteExclusionsByFilterId(const std::vector<char> &id) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<RegexFilterGlobalExclusion>(
-			where(column<RegexFilterGlobalExclusion>(&RegexFilterGlobalExclusion::filterId) == id)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to delete regex filter exclusion by filter id for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->deleteExclusionsByFilterId(ToQByteArray(id));
 	}
 }
 
 void deleteExclusion(ID dialogId, std::vector<char> filterId) {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<RegexFilterGlobalExclusion>(
-			where(column<RegexFilterGlobalExclusion>(&RegexFilterGlobalExclusion::filterId) == filterId and
-				column<RegexFilterGlobalExclusion>(&RegexFilterGlobalExclusion::dialogId) == dialogId
-			)
-		);
-	} catch (std::exception &ex) {
-		LOG(("Failed to delete regex filter exclusion for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->removeRegexExclusion(
 			std::int64_t(dialogId),
@@ -621,59 +462,28 @@ void deleteExclusion(ID dialogId, std::vector<char> filterId) {
 }
 
 void deleteAllFilters() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<RegexFilter>();
-	} catch (std::exception &ex) {
-		LOG(("Failed to delete all regex filter for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->clearRegexFilters();
 	}
 }
 
 void deleteAllExclusions() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		storage.remove_all<RegexFilterGlobalExclusion>();
-	} catch (std::exception &ex) {
-		LOG(("Failed to delete all regex filter exclusions for some reason: %1").arg(ex.what()));
-	}
 	if (const auto bridge = Ayu::Ffi::RustBridge::Global()) {
 		bridge->clearRegexExclusions();
 	}
 }
 
 bool hasFilters() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return !storage.select(
-			columns(column<RegexFilter>(&RegexFilter::id)),
-			limit(1)
-		).empty();
-	} catch (std::exception &ex) {
-		LOG(("Failed to check if there's any filters: %1").arg(ex.what()));
-		return false;
-	}
+	return !getAllRegexFilters().empty();
 }
 
 bool hasPerDialogFilters() {
-	std::lock_guard lock(databaseMutex);
-	try {
-		return
-			!storage.select(
-				columns(column<RegexFilter>(&RegexFilter::id)),
-				where(is_not_null(column<RegexFilter>(&RegexFilter::dialogId))),
-				limit(1)
-			).empty() ||
-			!storage.select(
-				columns(column<RegexFilterGlobalExclusion>(&RegexFilterGlobalExclusion::fakeId)),
-				limit(1)
-			).empty();
-	} catch (std::exception &ex) {
-		LOG(("Failed to check if there's any filters: %1").arg(ex.what()));
-		return false;
+	for (const auto &filter : getAllRegexFilters()) {
+		if (filter.dialogId.has_value()) {
+			return true;
+		}
 	}
+	return !getAllFiltersExclusions().empty();
 }
 
-}
+} // namespace AyuDatabase
