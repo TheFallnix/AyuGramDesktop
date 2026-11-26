@@ -164,6 +164,20 @@ mod ffi {
         pub payload: Vec<u8>,
     }
 
+    #[derive(Clone, Debug)]
+    pub struct FfiKvValue {
+        pub found: bool,
+        pub tag: u8,
+        pub data: Vec<u8>,
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct FfiKvTagStat {
+        pub tag: u8,
+        pub count: i64,
+        pub total_size: i64,
+    }
+
     extern "Rust" {
         type AyuRustEngine;
 
@@ -589,13 +603,49 @@ mod ffi {
             dialog_id: i64,
             msg_id: i32,
         ) -> Result<bool>;
+
+        fn kv_put(
+            self: &AyuRustEngine,
+            ns: &str,
+            key_hi: u64,
+            key_lo: u64,
+            tag: u8,
+            data: &[u8],
+            only_if_empty: bool,
+            max_bytes: i64,
+        ) -> Result<()>;
+        fn kv_get(
+            self: &AyuRustEngine,
+            ns: &str,
+            key_hi: u64,
+            key_lo: u64,
+        ) -> Result<FfiKvValue>;
+        fn kv_remove(self: &AyuRustEngine, ns: &str, key_hi: u64, key_lo: u64) -> Result<()>;
+        fn kv_copy_or_move_if_empty(
+            self: &AyuRustEngine,
+            ns: &str,
+            from_hi: u64,
+            from_lo: u64,
+            to_hi: u64,
+            to_lo: u64,
+            is_move: bool,
+        ) -> Result<()>;
+        fn kv_get_sizes(
+            self: &AyuRustEngine,
+            ns: &str,
+            keys_hi: &[u64],
+            keys_lo: &[u64],
+        ) -> Result<Vec<i32>>;
+        fn kv_clear(self: &AyuRustEngine, ns: &str) -> Result<()>;
+        fn kv_clear_by_tag(self: &AyuRustEngine, ns: &str, tag: u8) -> Result<()>;
+        fn kv_stats(self: &AyuRustEngine, ns: &str) -> Result<Vec<FfiKvTagStat>>;
     }
 }
 
 pub use ffi::{
-    FfiAccountSnapshot, FfiDialogRow, FfiGhostConfig, FfiMemoryStats, FfiMessageRow,
-    FfiPtsOutcome, FfiRawRecord, FfiRegexExclusion, FfiRegexFilter, FfiResultStatus, FfiSyncState,
-    FfiTransferProgress, FfiUnreadBadge,
+    FfiAccountSnapshot, FfiDialogRow, FfiGhostConfig, FfiKvTagStat, FfiKvValue, FfiMemoryStats,
+    FfiMessageRow, FfiPtsOutcome, FfiRawRecord, FfiRegexExclusion, FfiRegexFilter, FfiResultStatus,
+    FfiSyncState, FfiTransferProgress, FfiUnreadBadge,
 };
 
 struct Stage1BridgeTransport {
@@ -2189,6 +2239,99 @@ impl AyuRustEngine {
         self.storage
             .has_edited_records(user_id, dialog_id, msg_id)
             .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn kv_put(
+        &self,
+        ns: &str,
+        key_hi: u64,
+        key_lo: u64,
+        tag: u8,
+        data: &[u8],
+        only_if_empty: bool,
+        max_bytes: i64,
+    ) -> Result<()> {
+        self.storage
+            .kv_put(ns, key_hi, key_lo, tag, data, only_if_empty, max_bytes)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_get(&self, ns: &str, key_hi: u64, key_lo: u64) -> Result<FfiKvValue> {
+        let found = self
+            .storage
+            .kv_get(ns, key_hi, key_lo)
+            .map_err(|err| anyhow!(err.to_string()))?;
+        Ok(match found {
+            Some((tag, data)) => FfiKvValue {
+                found: true,
+                tag,
+                data,
+            },
+            None => FfiKvValue {
+                found: false,
+                tag: 0,
+                data: Vec::new(),
+            },
+        })
+    }
+
+    pub fn kv_remove(&self, ns: &str, key_hi: u64, key_lo: u64) -> Result<()> {
+        self.storage
+            .kv_remove(ns, key_hi, key_lo)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_copy_or_move_if_empty(
+        &self,
+        ns: &str,
+        from_hi: u64,
+        from_lo: u64,
+        to_hi: u64,
+        to_lo: u64,
+        is_move: bool,
+    ) -> Result<()> {
+        self.storage
+            .kv_copy_or_move_if_empty(ns, from_hi, from_lo, to_hi, to_lo, is_move)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_get_sizes(&self, ns: &str, keys_hi: &[u64], keys_lo: &[u64]) -> Result<Vec<i32>> {
+        let count = keys_hi.len().min(keys_lo.len());
+        let mut pairs = Vec::with_capacity(count);
+        for i in 0..count {
+            pairs.push((keys_hi[i], keys_lo[i]));
+        }
+        self.storage
+            .kv_get_sizes(ns, &pairs)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_clear(&self, ns: &str) -> Result<()> {
+        self.storage
+            .kv_clear(ns)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_clear_by_tag(&self, ns: &str, tag: u8) -> Result<()> {
+        self.storage
+            .kv_clear_by_tag(ns, tag)
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+
+    pub fn kv_stats(&self, ns: &str) -> Result<Vec<FfiKvTagStat>> {
+        let rows = self
+            .storage
+            .kv_stats(ns)
+            .map_err(|err| anyhow!(err.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|(tag, count, total_size)| FfiKvTagStat {
+                tag,
+                count,
+                total_size,
+            })
+            .collect())
     }
 }
 

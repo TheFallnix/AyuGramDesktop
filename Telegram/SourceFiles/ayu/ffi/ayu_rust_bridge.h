@@ -131,6 +131,18 @@ struct BridgeRawRecord {
 	QByteArray payload;
 };
 
+struct BridgeKvValue {
+	bool found = false;
+	std::uint8_t tag = 0;
+	QByteArray data;
+};
+
+struct BridgeKvTagStat {
+	std::uint8_t tag = 0;
+	std::int64_t count = 0;
+	std::int64_t totalSize = 0;
+};
+
 class RustBridge final {
 public:
 	static std::unique_ptr<RustBridge> Create(
@@ -450,6 +462,37 @@ public:
 		std::int64_t userId,
 		std::int64_t dialogId,
 		std::int32_t msgId) const;
+
+	bool kvPut(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo,
+		std::uint8_t tag,
+		const QByteArray &data,
+		bool onlyIfEmpty,
+		std::int64_t maxBytes);
+	[[nodiscard]] BridgeKvValue kvGet(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo) const;
+	bool kvRemove(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo);
+	bool kvCopyOrMoveIfEmpty(
+		const QString &ns,
+		std::uint64_t fromHi,
+		std::uint64_t fromLo,
+		std::uint64_t toHi,
+		std::uint64_t toLo,
+		bool isMove);
+	[[nodiscard]] std::vector<int> kvGetSizes(
+		const QString &ns,
+		const std::vector<std::uint64_t> &keysHi,
+		const std::vector<std::uint64_t> &keysLo) const;
+	bool kvClear(const QString &ns);
+	bool kvClearByTag(const QString &ns, std::uint8_t tag);
+	[[nodiscard]] std::vector<BridgeKvTagStat> kvStats(const QString &ns) const;
 
 private:
 	struct Impl;

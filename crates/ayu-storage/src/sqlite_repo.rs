@@ -221,6 +221,21 @@ impl SqliteStorage {
             ) STRICT;
             CREATE INDEX IF NOT EXISTS idx_ayu_edited_records_lookup
                 ON ayu_edited_records (user_id, dialog_id, msg_id);
+
+            CREATE TABLE IF NOT EXISTS kv_cache (
+                ns TEXT NOT NULL,
+                key_hi INTEGER NOT NULL,
+                key_lo INTEGER NOT NULL,
+                tag INTEGER NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                last_used INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                PRIMARY KEY (ns, key_hi, key_lo)
+            ) STRICT;
+            CREATE INDEX IF NOT EXISTS idx_kv_cache_ns_lru
+                ON kv_cache (ns, last_used ASC);
+            CREATE INDEX IF NOT EXISTS idx_kv_cache_ns_tag
+                ON kv_cache (ns, tag);
             ",
         )?;
         Ok(())
@@ -393,6 +408,186 @@ impl SqliteStorage {
              LIMIT 1",
         )?;
         Ok(stmt.query_row(params![user_id, dialog_id, msg_id], |_| Ok(())).optional()?.is_some())
+    }
+
+    fn kv_now_secs() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn kv_put(
+        &self,
+        ns: &str,
+        key_hi: u64,
+        key_lo: u64,
+        tag: u8,
+        data: &[u8],
+        only_if_empty: bool,
+        max_bytes: i64,
+    ) -> Result<(), StorageError> {
+        let now = Self::kv_now_secs();
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let sql = if only_if_empty {
+            "INSERT OR IGNORE INTO kv_cache (ns, key_hi, key_lo, tag, size_bytes, last_used, data)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+        } else {
+            "INSERT OR REPLACE INTO kv_cache (ns, key_hi, key_lo, tag, size_bytes, last_used, data)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+        };
+        let mut stmt = guard.prepare_cached(sql)?;
+        stmt.execute(params![
+            ns,
+            key_hi as i64,
+            key_lo as i64,
+            i64::from(tag),
+            data.len() as i64,
+            now,
+            data,
+        ])?;
+        if max_bytes > 0 {
+            let total: i64 = guard.query_row(
+                "SELECT COALESCE(SUM(size_bytes), 0) FROM kv_cache WHERE ns = ?1",
+                params![ns],
+                |row| row.get(0),
+            )?;
+            if total > max_bytes {
+                let mut excess = total - max_bytes;
+                let mut select = guard.prepare_cached(
+                    "SELECT key_hi, key_lo, size_bytes FROM kv_cache
+                     WHERE ns = ?1 ORDER BY last_used ASC LIMIT 64",
+                )?;
+                let victims: Vec<(i64, i64, i64)> = select
+                    .query_map(params![ns], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                let mut del = guard.prepare_cached(
+                    "DELETE FROM kv_cache WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+                )?;
+                for (hi, lo, sz) in victims {
+                    if excess <= 0 {
+                        break;
+                    }
+                    del.execute(params![ns, hi, lo])?;
+                    excess -= sz;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn kv_get(
+        &self,
+        ns: &str,
+        key_hi: u64,
+        key_lo: u64,
+    ) -> Result<Option<(u8, Vec<u8>)>, StorageError> {
+        let now = Self::kv_now_secs();
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "SELECT tag, data FROM kv_cache WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+        )?;
+        let found = stmt
+            .query_row(params![ns, key_hi as i64, key_lo as i64], |row| {
+                Ok((row.get::<_, i64>(0)? as u8, row.get::<_, Vec<u8>>(1)?))
+            })
+            .optional()?;
+        if found.is_some() {
+            let mut touch = guard.prepare_cached(
+                "UPDATE kv_cache SET last_used = ?4 WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+            )?;
+            let _ = touch.execute(params![ns, key_hi as i64, key_lo as i64, now]);
+        }
+        Ok(found)
+    }
+
+    pub fn kv_remove(&self, ns: &str, key_hi: u64, key_lo: u64) -> Result<(), StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "DELETE FROM kv_cache WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+        )?;
+        stmt.execute(params![ns, key_hi as i64, key_lo as i64])?;
+        Ok(())
+    }
+
+    pub fn kv_copy_or_move_if_empty(
+        &self,
+        ns: &str,
+        from_hi: u64,
+        from_lo: u64,
+        to_hi: u64,
+        to_lo: u64,
+        is_move: bool,
+    ) -> Result<(), StorageError> {
+        let now = Self::kv_now_secs();
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let inserted = guard.execute(
+            "INSERT OR IGNORE INTO kv_cache (ns, key_hi, key_lo, tag, size_bytes, last_used, data)
+             SELECT ns, ?4, ?5, tag, size_bytes, ?6, data
+             FROM kv_cache
+             WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+            params![ns, from_hi as i64, from_lo as i64, to_hi as i64, to_lo as i64, now],
+        )?;
+        if is_move && inserted > 0 {
+            guard.execute(
+                "DELETE FROM kv_cache WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+                params![ns, from_hi as i64, from_lo as i64],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn kv_get_sizes(
+        &self,
+        ns: &str,
+        keys: &[(u64, u64)],
+    ) -> Result<Vec<i32>, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "SELECT size_bytes FROM kv_cache WHERE ns = ?1 AND key_hi = ?2 AND key_lo = ?3",
+        )?;
+        let mut out = Vec::with_capacity(keys.len());
+        for &(hi, lo) in keys {
+            let sz = stmt
+                .query_row(params![ns, hi as i64, lo as i64], |row| row.get::<_, i64>(0))
+                .optional()?
+                .map(|v| v.clamp(0, i64::from(i32::MAX)) as i32)
+                .unwrap_or(-1);
+            out.push(sz);
+        }
+        Ok(out)
+    }
+
+    pub fn kv_clear(&self, ns: &str) -> Result<(), StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached("DELETE FROM kv_cache WHERE ns = ?1")?;
+        stmt.execute(params![ns])?;
+        Ok(())
+    }
+
+    pub fn kv_clear_by_tag(&self, ns: &str, tag: u8) -> Result<(), StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt =
+            guard.prepare_cached("DELETE FROM kv_cache WHERE ns = ?1 AND tag = ?2")?;
+        stmt.execute(params![ns, i64::from(tag)])?;
+        Ok(())
+    }
+
+    pub fn kv_stats(&self, ns: &str) -> Result<Vec<(u8, i64, i64)>, StorageError> {
+        let guard = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
+        let mut stmt = guard.prepare_cached(
+            "SELECT tag, COUNT(*), COALESCE(SUM(size_bytes), 0)
+             FROM kv_cache WHERE ns = ?1 GROUP BY tag",
+        )?;
+        let rows = stmt.query_map(params![ns], |row| {
+            Ok((row.get::<_, i64>(0)? as u8, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
     }
 
     fn decode_entities(blob: &[u8]) -> Result<SmallVec<[MessageEntitySpan; 2]>, StorageError> {

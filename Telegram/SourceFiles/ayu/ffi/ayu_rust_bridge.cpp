@@ -1866,4 +1866,178 @@ bool RustBridge::validateRegexPattern(
 	}
 }
 
+bool RustBridge::kvPut(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo,
+		std::uint8_t tag,
+		const QByteArray &data,
+		bool onlyIfEmpty,
+		std::int64_t maxBytes) {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		_impl->engine->kv_put(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			keyHi,
+			keyLo,
+			tag,
+			rust::Slice<const std::uint8_t>(
+				reinterpret_cast<const std::uint8_t*>(data.constData()),
+				data.size()),
+			onlyIfEmpty,
+			maxBytes);
+		return true;
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+BridgeKvValue RustBridge::kvGet(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo) const {
+	if (!_impl) {
+		return {};
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		const auto res = _impl->engine->kv_get(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			keyHi,
+			keyLo);
+		return BridgeKvValue{
+			.found = res.found,
+			.tag = res.tag,
+			.data = QByteArray(
+				reinterpret_cast<const char*>(res.data.data()),
+				int(res.data.size())),
+		};
+	} catch (const rust::Error &) {
+		return {};
+	}
+}
+
+bool RustBridge::kvRemove(
+		const QString &ns,
+		std::uint64_t keyHi,
+		std::uint64_t keyLo) {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		_impl->engine->kv_remove(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			keyHi,
+			keyLo);
+		return true;
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+bool RustBridge::kvCopyOrMoveIfEmpty(
+		const QString &ns,
+		std::uint64_t fromHi,
+		std::uint64_t fromLo,
+		std::uint64_t toHi,
+		std::uint64_t toLo,
+		bool isMove) {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		_impl->engine->kv_copy_or_move_if_empty(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			fromHi,
+			fromLo,
+			toHi,
+			toLo,
+			isMove);
+		return true;
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+std::vector<int> RustBridge::kvGetSizes(
+		const QString &ns,
+		const std::vector<std::uint64_t> &keysHi,
+		const std::vector<std::uint64_t> &keysLo) const {
+	if (!_impl) {
+		return std::vector<int>(keysHi.size(), -1);
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		const auto sizes = _impl->engine->kv_get_sizes(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			rust::Slice<const std::uint64_t>(keysHi.data(), keysHi.size()),
+			rust::Slice<const std::uint64_t>(keysLo.data(), keysLo.size()));
+		auto out = std::vector<int>();
+		out.reserve(sizes.size());
+		for (const auto s : sizes) {
+			out.push_back(int(s));
+		}
+		return out;
+	} catch (const rust::Error &) {
+		return std::vector<int>(keysHi.size(), -1);
+	}
+}
+
+bool RustBridge::kvClear(const QString &ns) {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		_impl->engine->kv_clear(rust::Str(nsUtf8.constData(), nsUtf8.size()));
+		return true;
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+bool RustBridge::kvClearByTag(const QString &ns, std::uint8_t tag) {
+	if (!_impl) {
+		return false;
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		_impl->engine->kv_clear_by_tag(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()),
+			tag);
+		return true;
+	} catch (const rust::Error &) {
+		return false;
+	}
+}
+
+auto RustBridge::kvStats(const QString &ns) const
+-> std::vector<BridgeKvTagStat> {
+	if (!_impl) {
+		return {};
+	}
+	try {
+		const auto nsUtf8 = ns.toUtf8();
+		const auto rows = _impl->engine->kv_stats(
+			rust::Str(nsUtf8.constData(), nsUtf8.size()));
+		auto out = std::vector<BridgeKvTagStat>();
+		out.reserve(rows.size());
+		for (const auto &row : rows) {
+			out.push_back(BridgeKvTagStat{
+				.tag = row.tag,
+				.count = row.count,
+				.totalSize = row.total_size,
+			});
+		}
+		return out;
+	} catch (const rust::Error &) {
+		return {};
+	}
+}
+
 } // namespace Ayu::Ffi
